@@ -1,0 +1,414 @@
+---
+title: Study Screening
+author:
+  - name : "Guy Mercer" 
+date: "`r format(Sys.time(), '%d %B, %Y')`" 
+output: html_document
+---
+
+DON"T RUN THIS DOCUMENT ALL AT ONCE. RUN THE CHUNKS SEPARATELY.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+PRISMA plot. Update as you go along.
+
+```{r}
+library(metagear)
+
+phases <- c("START_PHASE: 2198 of studies identified through WOS on 9th March 2023",
+            "START_PHASE: 3758 of studies identified through SCOPUS Search",
+            "START_PHASE: # of additional studies identified through other sources (back and forward searching of relevant reviews)",
+            "# of studies with title and abstract screened",
+            "EXCLUDE_PHASE: # of studies excluded",
+            "EXCLUDE_PHASE: # of duplicates removed",
+            "# of full-text articles assessed for eligibility",
+            "EXCLUDE_PHASE: # of full text studies excluded, not fitting eligibility criteria",
+            "# of studies included in qualitative synthesis",
+            "EXCLUDE_PHASE: # of studies excluded, incomplete data reported",
+            "# of studies included in quantitative synthesis (meta-analysis)"
+            )
+
+plot_PRISMA(phases)
+```
+
+Screening stage - there should be multiple people performing this stage. Perform a group screening step where the first 100 papers in the titles and abstract screen are screened by myself, Elli and Cecylia.
+
+```{r}
+# studies <- read.csv("./input/09_03_23_search_sheet_combined.csv")
+
+studies <- read.csv("./input/scopus_search_15_03_23.csv")
+```
+
+Only run this once for each reviewer
+
+```{r}
+ effort_distribute(studies, 
+                  reviewers = "Guy",
+                  initialize = TRUE,
+                  save_split = TRUE)
+```
+
+Abstract Screener
+
+```{r, eval=FALSE}
+abstract_screener("effort_Guy_scopus.csv",
+                  "Guy",
+                  highlightKeywords = c("toxic", "effect", "mortal", "viab", "endpoint", "end point", "oxid",
+                                        "cell cycle", "dna damage", "apop", "necro", "sensitiv", "growth", "surviv",
+                                        "aberra", "health", "fitness", "output", "reproduct", "develop", "behaviour",
+                                        "behavior", "fecundity", "offspring", "pesticid", "herbicid", "insecticid",
+                                        "fungicid", "acaricid", "miticid", "nematicid", "molluscicid", "rodenticid",
+                                        "agrochem", "active ingredient", "active substance", "active principle",
+                                        "active component", "active constituent", "active pesticide", "active agent",
+                                        "active compound", "pure ingredient", " pure substance", "pure principle",
+                                        "pure component", "pure constituent", "pure pesticide", "pure agent",
+                                        "pure compound", "technical ingredient", "technical substance",
+                                        "technical principle", "technical component", "technical constituent",
+                                        "technical pesticide", "technical agent", "technical compound",
+                                        "technical grade", "fundamental substance", "co formulant", "formulation",
+                                        "formulant", "formulated", "commercial form", "commercial product",
+                                        "commercial mixture", "inactive ingredient", "inert ingredient",
+                                        "adjuvant", "safener", "additive", "surfactant", "technical formulation",
+                                        "technical mixture"))
+```
+
+```{r}
+#effort_distribute(studies, 
+#                  reviewers = "Cecylia",
+#                  initialize = TRUE,
+#                  save_split = TRUE)
+```
+
+```{r, eval=FALSE}
+abstract_screener("effort_Cecylia.csv",
+                  "Cecylia",
+                  highlightKeywords = c("toxic", "effect", "mortal", "viab", "endpoint", "end point", "oxid",
+                                        "cell cycle", "dna damage", "apop", "necro", "sensitiv", "growth", "surviv",
+                                        "aberra", "health", "fitness", "output", "reproduct", "develop", "behaviour",
+                                        "behavior", "fecundity", "offspring", "pesticid", "herbicid", "insecticid",
+                                        "fungicid", "acaricid", "miticid", "nematicid", "molluscicid", "rodenticid",
+                                        "agrochem", "active ingredient", "active substance", "active principle",
+                                        "active component", "active constituent", "active pesticide", "active agent",
+                                        "active compound", "pure ingredient", " pure substance", "pure principle",
+                                        "pure component", "pure constituent", "pure pesticide", "pure agent",
+                                        "pure compound", "technical ingredient", "technical substance",
+                                        "technical principle", "technical component", "technical constituent",
+                                        "technical pesticide", "technical agent", "technical compound",
+                                        "technical grade", "fundamental substance", "co formulant", "formulation",
+                                        "formulant", "formulated", "commercial form", "commercial product",
+                                        "commercial mixture", "inactive ingredient", "inert ingredient",
+                                        "adjuvant", "safener", "additive", "surfactant", "technical formulation",
+                                        "technical mixture"))
+```
+
+Import the abstract screened document and resolve the Maybes. For WoS
+
+```{r}
+# WoS
+wos_screened <- read.csv("effort_Guy_wos.csv")
+
+# keep only the maybes
+wos_maybe <- wos_screened [grep("maybe", wos_screened$INCLUDE),]
+
+# save
+write.csv(wos_maybe, "./guy_wos_maybes.csv")
+
+# import into abstract screene after changing maybe to not vetted manually
+abstract_screener("guy_wos_maybes.csv",
+                  "Guy",
+                  highlightKeywords = c("toxic", "effect", "mortal", "viab", "endpoint", "end point", "oxid",
+                                        "cell cycle", "dna damage", "apop", "necro", "sensitiv", "growth", "surviv",
+                                        "aberra", "health", "fitness", "output", "reproduct", "develop", "behaviour",
+                                        "behavior", "fecundity", "offspring", "pesticid", "herbicid", "insecticid",
+                                        "fungicid", "acaricid", "miticid", "nematicid", "molluscicid", "rodenticid",
+                                        "agrochem", "active ingredient", "active substance", "active principle",
+                                        "active component", "active constituent", "active pesticide", "active agent",
+                                        "active compound", "pure ingredient", " pure substance", "pure principle",
+                                        "pure component", "pure constituent", "pure pesticide", "pure agent",
+                                        "pure compound", "technical ingredient", "technical substance",
+                                        "technical principle", "technical component", "technical constituent",
+                                        "technical pesticide", "technical agent", "technical compound",
+                                        "technical grade", "fundamental substance", "co formulant", "formulation",
+                                        "formulant", "formulated", "commercial form", "commercial product",
+                                        "commercial mixture", "inactive ingredient", "inert ingredient",
+                                        "adjuvant", "safener", "additive", "surfactant", "technical formulation",
+                                        "technical mixture"))
+```
+
+For Scopus
+
+```{r}
+# SCOPUS
+scopus_screened <- read.csv("effort_Guy_scopus.csv")
+
+# keep only the maybes
+scopus_maybe <- scopus_screened [grep("maybe", scopus_screened$INCLUDE),]
+
+# save
+write.csv(scopus_maybe, "./guy_scopus_maybes.csv")
+
+# import into abstract screene after changing maybe to not vetted manually
+abstract_screener("guy_scopus_maybes.csv",
+                  "Guy",
+                  highlightKeywords = c("toxic", "effect", "mortal", "viab", "endpoint", "end point", "oxid",
+                                        "cell cycle", "dna damage", "apop", "necro", "sensitiv", "growth", "surviv",
+                                        "aberra", "health", "fitness", "output", "reproduct", "develop", "behaviour",
+                                        "behavior", "fecundity", "offspring", "pesticid", "herbicid", "insecticid",
+                                        "fungicid", "acaricid", "miticid", "nematicid", "molluscicid", "rodenticid",
+                                        "agrochem", "active ingredient", "active substance", "active principle",
+                                        "active component", "active constituent", "active pesticide", "active agent",
+                                        "active compound", "pure ingredient", " pure substance", "pure principle",
+                                        "pure component", "pure constituent", "pure pesticide", "pure agent",
+                                        "pure compound", "technical ingredient", "technical substance",
+                                        "technical principle", "technical component", "technical constituent",
+                                        "technical pesticide", "technical agent", "technical compound",
+                                        "technical grade", "fundamental substance", "co formulant", "formulation",
+                                        "formulant", "formulated", "commercial form", "commercial product",
+                                        "commercial mixture", "inactive ingredient", "inert ingredient",
+                                        "adjuvant", "safener", "additive", "surfactant", "technical formulation",
+                                        "technical mixture"))
+```
+
+Import final WoS and SCOPUS screens
+
+```{r}
+wos <- read.csv("./guy_screening/effort_Guy_wos.csv")
+
+scopus <- read.csv("./guy_screening/effort_Guy_scopus.csv")
+
+combined <- rbind(wos, scopus)
+
+# take only Ys
+yes <- combined [grep("YES", combined$INCLUDE),]
+
+rownames(yes) <- 1:nrow(yes)
+
+# make everything lower case
+yes$TITLE <- tolower(yes$TITLE)
+
+# replace "-" with " " and ," with ""
+yes$TITLE <- gsub(pattern = "-", replacement = " ", x = yes$TITLE)
+yes$TITLE <- gsub(pattern = ",", replacement = "", x = yes$TITLE)
+
+
+# remove duplicates
+no_duplicates <- yes [order(yes$TITLE) [!duplicated(sort(yes$TITLE))], ]
+
+# export and remove other duplicates manually
+# write.csv(file = "no_duplicates.csv", x = no_duplicates)
+
+```
+
+Import Nagy refs and screen
+
+```{r}
+nagy_refs <- read.csv("./input/nagy_review_references.csv")
+```
+
+```{r}
+library(metagear)
+
+effort_distribute(nagy_refs, 
+                  reviewers = "Guy",
+                  initialize = TRUE,
+                  save_split = TRUE)
+```
+
+```{r}
+abstract_screener("effort_Guy_nagy_review_refs.csv",
+                  "Guy",
+                  highlightKeywords = c("toxic", "effect", "mortal", "viab", "endpoint", "end point", "oxid",
+                                        "cell cycle", "dna damage", "apop", "necro", "sensitiv", "growth", "surviv",
+                                        "aberra", "health", "fitness", "output", "reproduct", "develop", "behaviour",
+                                        "behavior", "fecundity", "offspring", "pesticid", "herbicid", "insecticid",
+                                        "fungicid", "acaricid", "miticid", "nematicid", "molluscicid", "rodenticid",
+                                        "agrochem", "active ingredient", "active substance", "active principle",
+                                        "active component", "active constituent", "active pesticide", "active agent",
+                                        "active compound", "pure ingredient", " pure substance", "pure principle",
+                                        "pure component", "pure constituent", "pure pesticide", "pure agent",
+                                        "pure compound", "technical ingredient", "technical substance",
+                                        "technical principle", "technical component", "technical constituent",
+                                        "technical pesticide", "technical agent", "technical compound",
+                                        "technical grade", "fundamental substance", "co formulant", "formulation",
+                                        "formulant", "formulated", "commercial form", "commercial product",
+                                        "commercial mixture", "inactive ingredient", "inert ingredient",
+                                        "adjuvant", "safener", "additive", "surfactant", "technical formulation",
+                                        "technical mixture"))
+```
+
+Import Nagy cited and screen.
+
+```{r}
+nagy_cited <- read.csv("./input/nagy_review_cited.csv")
+```
+
+```{r}
+library(metagear)
+
+effort_distribute(nagy_cited, 
+                  reviewers = "Guy",
+                  initialize = TRUE,
+                  save_split = TRUE)
+```
+
+```{r}
+abstract_screener("effort_Guy_nagy_review_cited.csv",
+                  "Guy",
+                  highlightKeywords = c("toxic", "effect", "mortal", "viab", "endpoint", "end point", "oxid",
+                                        "cell cycle", "dna damage", "apop", "necro", "sensitiv", "growth", "surviv",
+                                        "aberra", "health", "fitness", "output", "reproduct", "develop", "behaviour",
+                                        "behavior", "fecundity", "offspring", "pesticid", "herbicid", "insecticid",
+                                        "fungicid", "acaricid", "miticid", "nematicid", "molluscicid", "rodenticid",
+                                        "agrochem", "active ingredient", "active substance", "active principle",
+                                        "active component", "active constituent", "active pesticide", "active agent",
+                                        "active compound", "pure ingredient", " pure substance", "pure principle",
+                                        "pure component", "pure constituent", "pure pesticide", "pure agent",
+                                        "pure compound", "technical ingredient", "technical substance",
+                                        "technical principle", "technical component", "technical constituent",
+                                        "technical pesticide", "technical agent", "technical compound",
+                                        "technical grade", "fundamental substance", "co formulant", "formulation",
+                                        "formulant", "formulated", "commercial form", "commercial product",
+                                        "commercial mixture", "inactive ingredient", "inert ingredient",
+                                        "adjuvant", "safener", "additive", "surfactant", "technical formulation",
+                                        "technical mixture"))
+```
+
+Filter Nagy refs and cited by Y. Append to the deduplicated WoS and SCOPUS, result and remove duplicates. How many studies were added by the backwards (refs) and forwards (cited) searching?
+
+```{r}
+# import
+nagy_refs <- read.csv("./guy_screening/effort_Guy_nagy_review_refs.csv")
+
+nagy_cited <- read.csv("./guy_screening/effort_Guy_nagy_review_cited.csv")
+
+wos_scopus_final <- read.csv("no_duplicates_manual_check_complete.csv")
+
+# filter for YES
+nagy_refs <- nagy_refs [nagy_refs$INCLUDE == "YES", ]
+
+nagy_cited <- nagy_cited [nagy_cited$INCLUDE == "YES", ]
+
+# combine
+combined <- rbind(wos_scopus_final, nagy_refs, nagy_cited)
+
+# make everything lower case
+combined$TITLE <- tolower(combined$TITLE)
+
+# replace "-" with " " and ," with ""
+combined$TITLE <- gsub(pattern = "-", replacement = " ", x = combined$TITLE)
+combined$TITLE <- gsub(pattern = ",", replacement = "", x = combined$TITLE)
+
+# remove duplicates
+no_duplicates <- combined [order(combined$TITLE) [!duplicated(sort(combined$TITLE))], ]
+
+write.csv(file = "no_duplicates_manual_check_complete_wos_scopus_nagy.csv", x = no_duplicates)
+
+```
+
+Import Cox refs and screen
+
+```{r}
+cox_refs <- read.csv("input/cox_review_refs.csv")
+```
+
+```{r}
+library(metagear)
+
+effort_distribute(cox_refs, 
+                  reviewers = "Guy",
+                  initialize = TRUE,
+                  save_split = TRUE)
+```
+
+```{r}
+abstract_screener("effort_Guy_cox_review_refs.csv",
+                  "Guy",
+                  highlightKeywords = c("toxic", "effect", "mortal", "viab", "endpoint", "end point", "oxid",
+                                        "cell cycle", "dna damage", "apop", "necro", "sensitiv", "growth", "surviv",
+                                        "aberra", "health", "fitness", "output", "reproduct", "develop", "behaviour",
+                                        "behavior", "fecundity", "offspring", "pesticid", "herbicid", "insecticid",
+                                        "fungicid", "acaricid", "miticid", "nematicid", "molluscicid", "rodenticid",
+                                        "agrochem", "active ingredient", "active substance", "active principle",
+                                        "active component", "active constituent", "active pesticide", "active agent",
+                                        "active compound", "pure ingredient", " pure substance", "pure principle",
+                                        "pure component", "pure constituent", "pure pesticide", "pure agent",
+                                        "pure compound", "technical ingredient", "technical substance",
+                                        "technical principle", "technical component", "technical constituent",
+                                        "technical pesticide", "technical agent", "technical compound",
+                                        "technical grade", "fundamental substance", "co formulant", "formulation",
+                                        "formulant", "formulated", "commercial form", "commercial product",
+                                        "commercial mixture", "inactive ingredient", "inert ingredient",
+                                        "adjuvant", "safener", "additive", "surfactant", "technical formulation",
+                                        "technical mixture"))
+```
+
+Import Cox cited and screen
+
+```{r}
+cox_cited <- read.csv("input/cox_review_cited.csv")
+```
+
+```{r}
+library(metagear)
+
+effort_distribute(cox_cited, 
+                  reviewers = "Guy",
+                  initialize = TRUE,
+                  save_split = TRUE)
+```
+
+```{r}
+abstract_screener("effort_Guy_cox_review_cited.csv",
+                  "Guy",
+                  highlightKeywords = c("toxic", "effect", "mortal", "viab", "endpoint", "end point", "oxid",
+                                        "cell cycle", "dna damage", "apop", "necro", "sensitiv", "growth", "surviv",
+                                        "aberra", "health", "fitness", "output", "reproduct", "develop", "behaviour",
+                                        "behavior", "fecundity", "offspring", "pesticid", "herbicid", "insecticid",
+                                        "fungicid", "acaricid", "miticid", "nematicid", "molluscicid", "rodenticid",
+                                        "agrochem", "active ingredient", "active substance", "active principle",
+                                        "active component", "active constituent", "active pesticide", "active agent",
+                                        "active compound", "pure ingredient", " pure substance", "pure principle",
+                                        "pure component", "pure constituent", "pure pesticide", "pure agent",
+                                        "pure compound", "technical ingredient", "technical substance",
+                                        "technical principle", "technical component", "technical constituent",
+                                        "technical pesticide", "technical agent", "technical compound",
+                                        "technical grade", "fundamental substance", "co formulant", "formulation",
+                                        "formulant", "formulated", "commercial form", "commercial product",
+                                        "commercial mixture", "inactive ingredient", "inert ingredient",
+                                        "adjuvant", "safener", "additive", "surfactant", "technical formulation",
+                                        "technical mixture"))
+```
+
+Import the sorted Wos, SCOPUS and Nagy studies, combine with cox screened studies and remove duplicates. 
+
+```{r}
+# import
+cox_refs <- read.csv("./guy_screening/effort_Guy_cox_review_refs.csv")
+
+cox_cited <- read.csv("./guy_screening/effort_Guy_cox_review_cited.csv")
+
+wos_scopus_final <- read.csv("./no_duplicates_manual_check_complete_wos_scopus_nagy.csv")
+
+# filter for YES
+cox_refs <- cox_refs [cox_refs$INCLUDE == "YES", ]
+
+cox_cited <- cox_cited [cox_cited$INCLUDE == "YES", ]
+
+# combine
+combined <- rbind(wos_scopus_final, cox_refs, cox_cited)
+
+# make everything lower case
+combined$TITLE <- tolower(combined$TITLE)
+
+# replace "-" with " " and ," with ""
+combined$TITLE <- gsub(pattern = "-", replacement = " ", x = combined$TITLE)
+combined$TITLE <- gsub(pattern = ",", replacement = "", x = combined$TITLE)
+
+# remove duplicates
+no_duplicates <- combined [order(combined$TITLE) [!duplicated(sort(combined$TITLE))], ]
+
+write.csv(file = "no_duplicates_manual_check_complete_wos_scopus_nagy_cox.csv", x = no_duplicates)
+```
+
