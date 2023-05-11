@@ -412,3 +412,74 @@ no_duplicates <- combined [order(combined$TITLE) [!duplicated(sort(combined$TITL
 write.csv(file = "no_duplicates_manual_check_complete_wos_scopus_nagy_cox.csv", x = no_duplicates)
 ```
 
+How many papers investigate mortality?
+How many papers (potentiially) perform studies compatible with LC50 endpoints? Of these, how many are extractable and how many require a data request from author?
+
+```{r}
+# Import
+mortality_csv <- read.csv("guy_screening_steps/no_duplicates_manual_check_complete_wos_scopus_nagy_cox_googschol_mortality_add_direct_embryotox.csv")
+
+# mortality studies
+mortality_only <- mortality_csv [mortality_csv$MORTALITY_SURVIVAL_ORGANISM_VIABILITY == "YES", ]
+
+# data request required
+data_request <- mortality_csv [mortality_csv$DATA_REQUEST_REQUIRED == "YES", ]
+
+# usable LD50 and CIs already?
+ld50_complete <- mortality_csv [mortality_csv$LD50_WITH_CI_AVAILABLE == "YES", ]
+
+# combine ld50 compatible studies
+ld50_compatible <- rbind(ld50_complete, data_request)
+
+# reorder by the title
+ld50_compatible <- ld50_compatible [order(ld50_compatible$TITLE), ]
+
+# export
+write.csv(x = ld50_compatible, file = "ld50_compatible.csv")
+
+```
+
+Look at the inaccessible papers.
+
+```{r}
+all_papers <- read.csv("guy_screening_steps/no_duplicates_manual_check_complete_wos_scopus_nagy_cox_googschol_mortality_add_direct_embryotox.csv")
+
+# search comments for word access
+inaccessible_papers <- all_papers [grep("access", all_papers$COMMENTS), ]
+
+write.csv(inaccessible_papers, "inaccessible_papers.csv")
+```
+
+Combine papers that will be requested for raw data access and paper access.
+
+```{r}
+# data access
+data_access <- read.csv("ld50_compatible.csv")
+
+# paper access
+paper_access <- read.csv("guy_screening/inaccessible_papers.csv")
+
+# add cols to data_access
+data_access$REQUEST <- data_access$DATA_REQUEST_REQUIRED
+data_access$ACCESS_TYPE <- "n/a"
+data_access$ACCESS_TYPE <- ifelse(data_access$DATA_REQUEST_REQUIRED == "YES", data_access$ACCESS_TYPE <- "DATA", data_access$ACCESS_TYPE <- "n/a")
+
+# combine
+access <- rbind(paper_access, data_access)
+
+access <- access [access$REQUEST == "YES", ]
+
+write.csv(access, "access_request.csv")
+
+```
+
+Keep only studies with CIs
+
+```{r}
+all <- read.csv("guy_screening_steps/ld50_compatible.csv")
+
+with_ci_only <- all [all$LD50_WITH_CI_AVAILABLE == "YES", ]
+
+write.csv(with_ci_only, "ld50_with_ci.csv")
+```
+

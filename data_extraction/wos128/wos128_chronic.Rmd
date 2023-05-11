@@ -1,0 +1,44 @@
+---
+title: "wos128_chronic"
+author: "Guy Mercer"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Glyphosate
+
+Note. Use the weights function as this then accounts for number of individuals.
+
+```{r}
+library(drc)
+
+gly_chronic <- read.csv("output/wos128_chronic_glyphosate.csv")
+
+gly_chronic_mod <- drm(alive/total ~ dose, data = gly_chronic, fct = LL.3(), weights = total, type = "binomial")
+
+plot(gly_chronic_mod)
+
+summary(gly_chronic_mod)
+
+ED(gly_chronic_mod, respLev = c(50), level = 0.95)
+```
+
+Roundup
+
+```{r}
+roundup_chronic <- read.csv("output/wos128_chronic_roundup.csv")
+
+roundup_chronic_mod <- drm(alive/total ~ dose, data = roundup_chronic, fct = LL.3(), weights = total, type = "binomial")
+
+plot(roundup_chronic_mod)
+
+summary(roundup_chronic_mod)
+
+ED(roundup_chronic_mod, respLev = c(50), level = 0.95)
+```
+
+
