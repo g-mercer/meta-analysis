@@ -1,0 +1,113 @@
+---
+title: "scopus144"
+author: "Guy Mercer"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(drc)
+
+mort_dat <- read.csv("input/scopus144.csv")
+
+mort_dat$dose <- as.numeric(mort_dat$dose)
+
+mort_dat$dead <- as.numeric(mort_dat$dead)
+
+mort_dat$total <- as.numeric(mort_dat$total)
+
+mort_dat$alive <- as.numeric(mort_dat$alive)
+```
+
+Thiacloprid
+
+```{r}
+# thiacloprid ai
+thia_ai_mod <- drm(alive/total ~ dose, data = mort_dat [mort_dat$treatment == "thiacloprid", ], fct = LL.2(), weights = total, type = "binomial")
+
+plot(thia_ai_mod)
+
+summary(thia_ai_mod)
+
+ED(thia_ai_mod, respLev = c(50), level = 0.95)
+
+# thiacloprid formulation
+thia_form_mod <- drm(alive/total ~ dose, data = mort_dat [mort_dat$treatment == "calypso", ], fct = LL.2(), weights = total, type = "binomial")
+
+plot(thia_form_mod)
+
+summary(thia_form_mod)
+
+ED(thia_form_mod, respLev = c(50), level = 0.95)
+
+```
+
+Esfenvalerate
+
+```{r}
+# Esfenvalerate ai
+esfen_ai_mod <- drm(alive/total ~ dose, data = mort_dat [mort_dat$treatment == "esfenvalerate", ], fct = LL.2(), weights = total, type = "binomial")
+
+plot(esfen_ai_mod)
+
+summary(esfen_ai_mod)
+
+ED(esfen_ai_mod, respLev = c(50), level = 0.95)
+
+# Esfenvalerate form
+esfen_form_mod <- drm(alive/total ~ dose, data = mort_dat [mort_dat$treatment == "sumialfa", ], fct = LL.2(), weights = total, type = "binomial")
+
+plot(esfen_form_mod)
+
+summary(esfen_form_mod)
+
+ED(esfen_form_mod, respLev = c(50), level = 0.95)
+```
+
+dimethenamid-p
+
+```{r}
+# dimethenamid-p ai
+dimeth_ai_mod <- drm(alive/total ~ dose, data = mort_dat [mort_dat$treatment == "dimethenamid-p", ], fct = LL.2(), weights = total, type = "binomial")
+
+plot(dimeth_ai_mod)
+
+summary(dimeth_ai_mod)
+
+ED(dimeth_ai_mod, respLev = c(50), level = 0.95)
+
+# dimethenamid-p form
+dimeth_form_mod <- drm(alive/total ~ dose, data = mort_dat [mort_dat$treatment == "frontier", ], fct = LL.2(), weights = total, type = "binomial")
+
+plot(dimeth_form_mod)
+
+summary(dimeth_form_mod)
+
+ED(dimeth_form_mod, respLev = c(50), level = 0.95)
+```
+
+prosulfocarb
+
+```{r}
+# dimethenamid-p ai
+prosul_ai_mod <- drm(alive/total ~ dose, data = mort_dat [mort_dat$treatment == "prosulfocarb", ], fct = LL.2(), weights = total, type = "binomial")
+
+plot(prosul_ai_mod)
+
+summary(prosul_ai_mod)
+
+ED(prosul_ai_mod, respLev = c(50), level = 0.95)
+
+# dimethenamid-p form
+prosul_form_mod <- drm(alive/total ~ dose, data = mort_dat [mort_dat$treatment == "filon", ], fct = LL.2(), weights = total, type = "binomial")
+
+plot(prosul_form_mod)
+
+summary(prosul_form_mod)
+
+ED(prosul_form_mod, respLev = c(50), level = 0.95)
+```

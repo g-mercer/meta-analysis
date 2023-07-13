@@ -1,0 +1,34 @@
+---
+title: "supplementary methods table"
+author: "Guy Mercer"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Sort so manually adding references is quicker.
+
+```{r}
+key <- read.csv("input/study_id_paper_key.csv")
+
+key <- key [order(key$AUTHORS), ]
+
+write.csv(file = "key_sorted_by_author.csv", x = key, row.names = FALSE)
+```
+
+Export and manually add references.
+
+Manually add references, import and re-sort by title.
+
+```{r}
+key_refs <- read.csv(file = "key_sorted_by_author.csv")
+
+key_refs <- key_refs[order(key_refs$TITLE), ]
+
+write.csv(file = "key_with_ref_sorted_title.csv", x = key_refs, row.names = FALSE)
+
+```
+

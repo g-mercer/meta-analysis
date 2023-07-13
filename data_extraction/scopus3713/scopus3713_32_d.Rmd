@@ -1,0 +1,59 @@
+---
+title: "32 day toxicity scopus 3713"
+author: "Guy Mercer"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(drc)
+
+mp_32 <- read.csv("input/methyl_parathion_32_day.csv")
+
+# ai
+mp_32_mod <- drm(alive/total ~ dose, data = mp_32 [mp_32$treatment == "methyl parathion", ], fct = LL.3(), weights = total, type = "binomial")
+
+plot(mp_32_mod)
+
+summary(mp_32_mod)
+
+ED(mp_32_mod, respLev = c(50), level = 0.95)
+
+# form
+pm_32_mod <- drm(alive/total ~ dose, data = mp_32 [mp_32$treatment == "penncap-m", ], fct = LL.3(), weights = total, type = "binomial")
+
+plot(pm_32_mod)
+
+summary(pm_32_mod)
+
+ED(pm_32_mod, respLev = c(50), level = 0.95)
+
+```
+
+```{r}
+diazinon <- read.csv("input/diazinon_32_day.csv")
+
+# ai
+diaz_ai_mod <- drm(alive/total ~ dose, data = diazinon [diazinon$treatment == "diazinon", ], fct = LL.3(), weights = total, type = "binomial")
+
+plot(diaz_ai_mod)
+
+summary(diaz_ai_mod)
+
+ED(diaz_ai_mod, respLev = c(50), level = 0.95)
+
+# form
+diaz_form_mod <- drm(alive/total ~ dose, data = diazinon [diazinon$treatment == "knox_out_2_fm", ], fct = LL.3(), weights = total, type = "binomial")
+
+plot(diaz_form_mod)
+
+summary(diaz_form_mod)
+
+ED(diaz_form_mod, respLev = c(50), level = 0.95)
+
+```
+

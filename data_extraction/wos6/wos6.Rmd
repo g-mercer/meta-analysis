@@ -1,0 +1,33 @@
+---
+title: "wos6"
+author: "Guy Mercer"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(drc)
+
+wos6 <- read.csv("input/wos6.csv")
+
+wos6$percent_survival <- as.numeric(wos6$percent_survival)
+
+wos6$treatment <- as.factor(wos6$treatment)
+
+wos6$concentration <- as.numeric(wos6$concentration)
+
+# model the ai and formulation together
+ai_form_mod <- drm(percent_survival ~ concentration, treatment, data = wos6, fct = LL.4(), type = "continuous")
+
+summary(ai_form_mod)
+
+plot(ai_form_mod)
+
+ED(ai_form_mod, c(50), interval = "delta")
+
+```
+

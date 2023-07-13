@@ -1,0 +1,210 @@
+---
+title: "ICC Estimation"
+author: "Guy Mercer"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+[rptR vignette](https://cran.r-project.org/web/packages/rptR/vignettes/rptR.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Look at wos1144. What Siviter did was calculate the ICC for each available treatment group and take the range. Do the same but controlling for dose.
+
+For this data set - Define groups so each experimental run has a unique grouping ID, determined from the interpreted experimental design. I think the 6 day AI and formulation work were performed separately. So the AI runs are 1-12, and the FORM runs are 13-28. For the 21 day work it is conceivable that the AI and FORM experiments were run in parallel (so AI 0-6 and FORM 0-32 were performed in the same batch, so can be considered a group).
+
+Why do we include covariates? "We will here include Treatment and Sex as covariates. Note that the treatment was artificially applied, hence it potentially introduces excess variation to the sample that we might want to control for statistically. Sex is a more controversial example, because it represents part of the natural variation, but often we want to know the (adjusted) repeatabilities given that the sexual identities of the individuals are known (and assuming that repeatabilities are identical across the sexes).
+
+dose introduces variation that should be controlled for.
+
+```{r}
+library(rptR)
+
+wos1144_method_2 <- read.csv("input/wos1144_aggregated_method_2.csv")
+
+# sort classes
+wos1144_method_2$dose <- as.numeric(wos1144_method_2$dose)
+wos1144_method_2$alive <- as.numeric(wos1144_method_2$alive)
+wos1144_method_2$total <- as.numeric(wos1144_method_2$total)
+wos1144_method_2$treatment <- as.factor(wos1144_method_2$treatment)
+wos1144_method_2$exp_length_days <- as.factor(wos1144_method_2$exp_length_days)
+wos1144_method_2$replicate <- as.factor(wos1144_method_2$replicate)
+
+# add dead column
+wos1144_method_2$dead <- wos1144_method_2$total - wos1144_method_2$alive
+
+# look at individual treatment groups
+# form 21
+wos1144_method_2_form_21 <- wos1144_method_2 [(wos1144_method_2$treatment == "FORM" & wos1144_method_2$exp_length_days == "21"), ]
+
+form_21_rep_intercept <- rpt(cbind(alive, dead) ~ (1 | replicate), grname = c("replicate"), 
+                     data = wos1144_method_2_form_21, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(form_21_rep_intercept)
+
+summary(form_21_rep_intercept$mod)
+
+form_21_rep_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), 
+                    grname = c("replicate"), 
+                    data = wos1144_method_2_form_21, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(form_21_rep_dose)
+
+summary(form_21_rep_dose$mod)
+
+# ai 21
+wos1144_method_2_ai_21 <- wos1144_method_2 [(wos1144_method_2$treatment == "AI" & wos1144_method_2$exp_length_days == "21"), ]
+
+ai_21_rep_intercept <- rpt(cbind(alive, dead) ~ (1 | replicate), grname = c("replicate"), 
+                     data = wos1144_method_2_ai_21, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(ai_21_rep_intercept)
+
+summary(ai_21_rep_intercept$mod)
+
+ai_21_rep_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), 
+                    grname = c("replicate"), 
+                    data = wos1144_method_2_ai_21, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(ai_21_rep_dose)
+
+summary(ai_21_rep_dose$mod)
+
+# form 6
+wos1144_method_2_form_6 <- wos1144_method_2 [(wos1144_method_2$treatment == "FORM" & wos1144_method_2$exp_length_days == "6"), ]
+
+form_6_rep_intercept <- rpt(cbind(alive, dead) ~ (1 | replicate), grname = c("replicate"), 
+                     data = wos1144_method_2_form_6, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(form_6_rep_intercept)
+
+summary(form_6_rep_intercept$mod)
+
+form_6_rep_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), 
+                    grname = c("replicate"), 
+                    data = wos1144_method_2_form_6, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(form_6_rep_dose)
+
+summary(form_6_rep_dose$mod)
+
+# ai 6
+wos1144_method_2_ai_6 <- wos1144_method_2 [(wos1144_method_2$treatment == "AI" & wos1144_method_2$exp_length_days == "6"), ]
+
+ai_6_rep_intercept <- rpt(cbind(alive, dead) ~ (1 | replicate), grname = c("replicate"), 
+                     data = wos1144_method_2_ai_6, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(ai_6_rep_intercept)
+
+summary(ai_6_rep_intercept$mod)
+
+ai_6_rep_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), 
+                    grname = c("replicate"), 
+                    data = wos1144_method_2_ai_6, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(ai_6_rep_dose)
+
+summary(ai_6_rep_dose$mod)
+```
+
+```{r}
+scopus144 <- read.csv("input/scopus144.csv")
+
+scopus144$dose <- as.numeric(scopus144$dose)
+scopus144$alive <- as.numeric(scopus144$alive)
+scopus144$total <- as.numeric(scopus144$total)
+scopus144$dead <- as.numeric(scopus144$dead)
+scopus144$treatment <- as.factor(scopus144$treatment)
+scopus144$replicate <- as.factor(scopus144$replicate)
+
+# sumialfa
+sumialfa <- scopus144 [scopus144$treatment == "sumialfa", ]
+
+sumialfa_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), grname = c("replicate"), 
+                     data = sumialfa, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(sumialfa_dose)
+
+summary(sumialfa_dose$mod)
+
+# calypso
+calypso <- scopus144 [scopus144$treatment == "calypso", ]
+
+calypso_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), grname = c("replicate"), 
+                     data = calypso, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(calypso_dose)
+
+summary(calypso_dose$mod)
+
+# esfenvalerate
+esfenvalerate <- scopus144 [scopus144$treatment == "esfenvalerate", ]
+
+esfenvalerate_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), grname = c("replicate"), 
+                     data = esfenvalerate, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(esfenvalerate_dose)
+
+summary(esfenvalerate_dose$mod)
+
+# thiacloprid
+thiacloprid <- scopus144 [scopus144$treatment == "thiacloprid", ]
+
+thiacloprid_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), grname = c("replicate"), 
+                     data = thiacloprid, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(thiacloprid_dose)
+
+summary(thiacloprid_dose$mod)
+
+# frontier
+frontier <- scopus144 [scopus144$treatment == "frontier", ]
+
+frontier_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), grname = c("replicate"), 
+                     data = frontier, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(frontier_dose)
+
+summary(frontier_dose$mod)
+
+# filon
+filon <- scopus144 [scopus144$treatment == "filon", ]
+
+filon_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), grname = c("replicate"), 
+                     data = filon, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(filon_dose)
+
+summary(filon_dose$mod)
+
+# prosulfocarb
+prosulfocarb <- scopus144 [scopus144$treatment == "prosulfocarb", ]
+
+prosulfocarb_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), grname = c("replicate"), 
+                     data = prosulfocarb, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(prosulfocarb_dose)
+
+summary(prosulfocarb_dose$mod)
+
+# dimethenamid-p
+dimethenamidp <- scopus144 [scopus144$treatment == "dimethenamid-p", ]
+
+dimethenamidp_dose <- rpt(cbind(alive, dead) ~ dose + (1 | replicate), grname = c("replicate"), 
+                     data = dimethenamidp, datatype = "Proportion", nboot = 10, npermut = 0)
+
+print(dimethenamidp_dose)
+
+summary(dimethenamidp_dose$mod)
+
+# ICC values
+icc_values <- c(0, 0, 0.046, 0, 0.032, 0.017, 0, 0, 0.001, 0.033, 0, 0.442)
+
+median(icc_values)
+
+mean(icc_values)
+
+```
+

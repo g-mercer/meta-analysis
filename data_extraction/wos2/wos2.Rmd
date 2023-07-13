@@ -1,0 +1,30 @@
+---
+title: "wos2"
+author: "Guy Mercer"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(drc)
+
+wos2 <- read.csv("input/wos2.csv")
+
+wos2$alive <- as.numeric(wos2$alive)
+wos2$total <- as.numeric(wos2$total)
+wos2$dose <- as.numeric(wos2$dose)
+
+wos2_mod <- drm(alive/total ~ dose, data = wos2, fct = LL.4(), weights = total, type = "binomial")
+
+summary(wos2_mod)
+
+plot(wos2_mod)
+
+ED(wos2_mod, c(50), interval = "delta")
+
+```
+

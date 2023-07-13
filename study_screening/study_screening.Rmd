@@ -82,7 +82,7 @@ abstract_screener("effort_Guy_scopus.csv",
 ```
 
 ```{r, eval=FALSE}
-abstract_screener("effort_Cecylia.csv",
+abstract_screener("cecylia_screening/effort_Cecylia_wos.csv",
                   "Cecylia",
                   highlightKeywords = c("toxic", "effect", "mortal", "viab", "endpoint", "end point", "oxid",
                                         "cell cycle", "dna damage", "apop", "necro", "sensitiv", "growth", "surviv",

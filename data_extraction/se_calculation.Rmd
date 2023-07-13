@@ -1,0 +1,558 @@
+---
+title: "SE calculation"
+author: "Guy Mercer"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Preparing df
+
+```{r}
+extr_data <- read.csv("data_extraction_2x5.csv")
+
+# remove > values for AI and formulation from df
+extr_data_filt_ai <- extr_data [-grep(">", extr_data$AI_50), ]
+extr_data_filt_ai_form <- extr_data_filt_ai [-grep(">", extr_data_filt_ai$FORM_50), ]
+
+# make AI_50 and FORM_50 numeric
+extr_data_filt_ai_form$AI_50 <- as.numeric(extr_data_filt_ai_form$AI_50)
+extr_data_filt_ai_form$FORM_50 <- as.numeric(extr_data_filt_ai_form$FORM_50)
+
+# make AI_ERROR_LOWER, AI_ERROR_HIGHER, FORM_ERROR_LOWER and FORM_ERROR_HIGHER numeric
+extr_data_filt_ai_form$AI_ERROR_LOWER <- as.numeric(extr_data_filt_ai_form$AI_ERROR_LOWER)
+extr_data_filt_ai_form$AI_ERROR_HIGHER <- as.numeric(extr_data_filt_ai_form$AI_ERROR_HIGHER)
+extr_data_filt_ai_form$FORM_ERROR_LOWER <- as.numeric(extr_data_filt_ai_form$FORM_ERROR_LOWER)
+extr_data_filt_ai_form$FORM_ERROR_HIGHER <- as.numeric(extr_data_filt_ai_form$FORM_ERROR_HIGHER)
+
+# make AI_N_CONTAINER and AI_N_INDIVIDUALS_PER_CONTAINER numeric
+extr_data_filt_ai_form$AI_N_CONTAINER <- as.numeric(extr_data_filt_ai_form$AI_N_CONTAINER)
+extr_data_filt_ai_form$AI_N_INDIVIDUALS_PER_CONTAINER <- as.numeric(extr_data_filt_ai_form$AI_N_INDIVIDUALS_PER_CONTAINER)
+
+# make FORM_N_CONTAINER and FORM_N_INDIVIDUALS_PER_CONTAINER numeric
+extr_data_filt_ai_form$FORM_N_CONTAINER <- as.numeric(extr_data_filt_ai_form$FORM_N_CONTAINER)
+extr_data_filt_ai_form$FORM_N_INDIVIDUALS_PER_CONTAINER <- as.numeric(extr_data_filt_ai_form$FORM_N_INDIVIDUALS_PER_CONTAINER)
+
+# do the ai and formulations always both have ci_95 or se?
+different_error_type <- extr_data_filt_ai_form [extr_data_filt_ai_form$AI_ERROR_TYPE != extr_data_filt_ai_form$FORM_ERROR_TYPE, ]
+
+# remove these for now
+extr_data_filt_ai_form <- extr_data_filt_ai_form [extr_data_filt_ai_form$AI_ERROR_TYPE == extr_data_filt_ai_form$FORM_ERROR_TYPE, ]
+
+# keep just the CI_95 rows
+ci_95_rows <- extr_data_filt_ai_form [extr_data_filt_ai_form$AI_ERROR_TYPE == "CI_95", ]
+
+# SE values
+SE_rows <- extr_data_filt_ai_form [extr_data_filt_ai_form$AI_ERROR_TYPE == "SE", ]
+
+# for some CIs there were data inputting errors resulting in negative values for the arms.
+# if either of the arms are greater than 0, retain
+
+# row removed. This will be excluded from the analysis
+ci_95_rows [(ci_95_rows$FORM_ERROR_LOWER <= 0) & (ci_95_rows$FORM_ERROR_HIGHER <= 0), ]
+
+ci_95_rows <- ci_95_rows [(ci_95_rows$AI_ERROR_LOWER > 0) | (ci_95_rows$AI_ERROR_HIGHER > 0), ]
+ci_95_rows <- ci_95_rows [(ci_95_rows$FORM_ERROR_LOWER > 0) | (ci_95_rows$FORM_ERROR_HIGHER > 0), ]
+```
+
+--------------------------
+
+In the chunk below I'm going to create a df of the effect sizes with missing SE values. Using this, I'm going to work out for how many of these effect sizes:
+
+1) AI > the FORM
+2) FORM > AI
+3) AI = FORM
+
+```{r}
+# missing variance df
+missing_se <- extr_data [(extr_data$AI_ERROR_TYPE == "n/a") | (extr_data$FORM_ERROR_TYPE == "n/a"), ]
+
+# remove the > signs 
+missing_se$AI_50 <- gsub(">", "", missing_se$AI_50)
+missing_se$FORM_50 <- gsub(">", "", missing_se$FORM_50)
+
+# make numeric
+missing_se$AI_50 <- as.numeric(missing_se$AI_50)
+missing_se$FORM_50 <- as.numeric(missing_se$FORM_50)
+
+nrow(missing_se [missing_se$AI_50 > missing_se$FORM_50, ])
+nrow(missing_se [missing_se$AI_50 < missing_se$FORM_50, ])
+nrow(missing_se [missing_se$AI_50 == missing_se$FORM_50, ])
+
+nrow(missing_se [missing_se$AI_50 > missing_se$FORM_50, ]) / nrow(missing_se)
+```
+
+Of the 105 effect sizes with missing SE values:
+
+1) For 84 the AI has a higher ED50 than the FORM.
+2) For 8 the FORM has a higher ED50 than the AI.
+3) For 13 the AI and FORM have the same ED50.
+
+So for the dataset with missing variance values, 80% of effect sizes had an AI with a bigger ED50 than their formulation.
+
+What is the pattern for the dataset where variance values exist?
+
+```{r}
+with_variance <- extr_data [(extr_data$AI_ERROR_TYPE != "n/a") & (extr_data$FORM_ERROR_TYPE != "n/a"), ]
+
+# remove the row where both CI arms were 0
+with_variance <- with_variance [!((with_variance$FORM_ERROR_LOWER <= 0) & (with_variance$FORM_ERROR_HIGHER <= 0)), ]
+
+with_variance$AI_50 <- as.numeric(with_variance$AI_50)
+with_variance$FORM_50 <- as.numeric(with_variance$FORM_50)
+
+nrow(with_variance [with_variance$AI_50 > with_variance$FORM_50, ])
+nrow(with_variance [with_variance$AI_50 < with_variance$FORM_50, ])
+nrow(with_variance [with_variance$AI_50 == with_variance$FORM_50, ])
+
+nrow(with_variance [with_variance$AI_50 > with_variance$FORM_50, ]) / nrow(with_variance)
+
+```
+
+1) For 226 the AI has a higher ED50 than the FORM.
+2) For 125 the FORM has a higher ED50 than the AI.
+3) For 9 the AI and FORM have the same ED50.
+
+So for the dataset with variance values, 62.8% of effect sizes had an AI with a bigger ED50 than their formulation.
+
+This shows that the data with "missing" SE values has a greater proportion of effect sizes with less toxic AIs in comparison to the data with a variance estimate. 
+
+Of course, these SEs aren't really "missing". They never existed as for these observations point estimates couldn't be calculated because the AI/FORM was non-toxic over the tested range. I only want to estimate them to include the effect sizes as these observations contain information on the direction and magnitude of the overall effect estimate.
+
+Including effect sizes with imputed data is also conservative in a ways because I am logging the ED50 as the > value. So the difference between the AI and FORM is actually greater than the effect size recorded. As the bulk of the imputed data is AI ED50 > FORM ED50, then the bulk of the effect estimates are underestimating the effect of the formulation.
+
+--------------------------
+
+SE = CI_95 / x. x is determined by a t-distribution value, which in turn is determined by sample size (and significance level). A smaller sample size results in a larger t-distribution value, which in turn results in a smaller extracted SE.
+
+The most conservative approach, therefore, is to assume that the individual level sample sizes were used in the calculation of the 95% CIs (larger sample size, smaller t-distribution value, larger extracted SE, in turn larger LRRs variance).
+
+Calculate both SE_individual (ICC = 0) and SE_container (ICC = 1).
+
+```{r}
+# for the AI
+AI_biggest_CI_arm <- matrix(0, nrow = nrow(ci_95_rows), ncol = 1)
+
+for (i in 1:nrow(ci_95_rows)) {
+  
+  if(ci_95_rows$AI_ERROR_LOWER [i] > ci_95_rows$AI_ERROR_HIGHER [i]) {
+    
+    AI_biggest_CI_arm [i] <- ci_95_rows$AI_ERROR_LOWER [i]
+    
+  }
+  
+  else {
+    
+    AI_biggest_CI_arm [i] <- ci_95_rows$AI_ERROR_HIGHER [i]
+    
+  }
+  
+
+}
+
+ci_95_rows$AI_BIGGEST_CI_ARM <- AI_biggest_CI_arm [, 1]
+
+# add a row for AI_N_INDIVIDUAL
+ci_95_rows$AI_N_INDIVIDUAL <- ci_95_rows$AI_N_CONTAINER * ci_95_rows$AI_N_INDIVIDUALS_PER_CONTAINER
+
+# SE calculated using sample size at the individual level.
+AI_SE_individual <- matrix(0, nrow = nrow(ci_95_rows), ncol = 1)
+
+for (i in 1:nrow(ci_95_rows)) {
+  
+  AI_SE_individual [i] <- ci_95_rows$AI_BIGGEST_CI_ARM [i] / -qt(.025, df = ci_95_rows$AI_N_INDIVIDUAL [i] -1)
+
+}
+
+ci_95_rows$AI_SE_INDIVIDUAL <- AI_SE_individual [, 1]
+
+# SE calculated using sample size at the container level.
+AI_SE_container <- matrix(0, nrow = nrow(ci_95_rows), ncol = 1)
+
+for (i in 1:nrow(ci_95_rows)) {
+  
+  AI_SE_container [i] <- ci_95_rows$AI_BIGGEST_CI_ARM [i] / -qt(.025, df = ci_95_rows$AI_N_CONTAINER [i] -1)
+
+}
+
+ci_95_rows$AI_SE_CONTAINER <- AI_SE_container [, 1]
+
+# for the formulation
+FORM_biggest_CI_arm <- matrix(0, nrow = nrow(ci_95_rows), ncol = 1)
+
+for (i in 1:nrow(ci_95_rows)) {
+  
+  if(ci_95_rows$FORM_ERROR_LOWER [i] > ci_95_rows$FORM_ERROR_HIGHER [i]) {
+    
+    FORM_biggest_CI_arm [i] <- ci_95_rows$FORM_ERROR_LOWER [i]
+    
+  }
+  
+  else {
+    
+    FORM_biggest_CI_arm [i] <- ci_95_rows$FORM_ERROR_HIGHER [i]
+    
+  }
+  
+
+}
+
+ci_95_rows$FORM_BIGGEST_CI_ARM <- FORM_biggest_CI_arm [, 1]
+
+# add a row for FORM_N_INDIVIDUAL
+ci_95_rows$FORM_N_INDIVIDUAL <- ci_95_rows$FORM_N_CONTAINER * ci_95_rows$FORM_N_INDIVIDUALS_PER_CONTAINER
+
+# SE calculated using sample size at the individual level.
+FORM_SE_individual <- matrix(0, nrow = nrow(ci_95_rows), ncol = 1)
+
+for (i in 1:nrow(ci_95_rows)) {
+  
+  FORM_SE_individual [i] <- ci_95_rows$FORM_BIGGEST_CI_ARM [i] / -qt(.025, df = ci_95_rows$FORM_N_INDIVIDUAL [i] -1)
+
+}
+
+ci_95_rows$FORM_SE_INDIVIDUAL <- FORM_SE_individual [, 1]
+
+# SE calculated using sample size at the container level.
+FORM_SE_container <- matrix(0, nrow = nrow(ci_95_rows), ncol = 1)
+
+for (i in 1:nrow(ci_95_rows)) {
+  
+  FORM_SE_container [i] <- ci_95_rows$FORM_BIGGEST_CI_ARM [i] / -qt(.025, df = ci_95_rows$FORM_N_CONTAINER [i] -1)
+
+}
+
+ci_95_rows$FORM_SE_CONTAINER <- FORM_SE_container [, 1]
+```
+
+I now have a column for AI_BIGGEST_CI_ARM, AI_N_INDIVIDUAL, AI_SE_INDIVIDUAL, AI_SE_CONTAINER,  FORM_BIGGEST_CI_ARM, FORM_N_INDIVIDUAL, FORM_SE_INDIVIDUAL, FORM_SE_CONTAINER. Add these to SE_rows.
+
+Max ICC = 0.442 or 0.046. Decided to use both.
+
+In total using 4 ICCS, 0, 1, 0.442, 0.046. 
+
+0.046 is the most realistic as 0.05 is frequently quoted in the literature as being most likely.
+
+```{r}
+# average cluster size
+ci_95_rows$AVERAGE_CLUSTER_SIZE <- ((ci_95_rows$AI_N_CONTAINER * ci_95_rows$AI_N_INDIVIDUALS_PER_CONTAINER) + (ci_95_rows$FORM_N_CONTAINER * ci_95_rows$FORM_N_INDIVIDUALS_PER_CONTAINER)) / (ci_95_rows$AI_N_CONTAINER + ci_95_rows$FORM_N_CONTAINER) 
+
+# design effect for 0.442 ICC
+ci_95_rows$DESIGN_EFFECT_0.442_ICC <- 1 + (ci_95_rows$AVERAGE_CLUSTER_SIZE - 1) * 0.442
+
+# ESS for ai based on 0.442 ICC
+ci_95_rows$AI_ESS_0.442_ICC <- ci_95_rows$AI_N_INDIVIDUAL / ci_95_rows$DESIGN_EFFECT_0.442_ICC
+
+# ESS for form based on 0.442 ICC
+ci_95_rows$FORM_ESS_0.442_ICC <- ci_95_rows$FORM_N_INDIVIDUAL / ci_95_rows$DESIGN_EFFECT_0.442_ICC
+
+# design effect for 0.046 ICC
+ci_95_rows$DESIGN_EFFECT_0.046_ICC <- 1 + (ci_95_rows$AVERAGE_CLUSTER_SIZE - 1) * 0.046
+
+# ESS for ai based on 0.046 ICC
+ci_95_rows$AI_ESS_0.046_ICC <- ci_95_rows$AI_N_INDIVIDUAL / ci_95_rows$DESIGN_EFFECT_0.046_ICC 
+
+# ESS for FORM based on 0.046 ICC
+ci_95_rows$FORM_ESS_0.046_ICC <- ci_95_rows$FORM_N_INDIVIDUAL / ci_95_rows$DESIGN_EFFECT_0.046_ICC
+
+# FORM SE calculation using ESS (ICC = 0.442)
+FORM_SE_ESS_0.442 <- matrix(0, nrow = nrow(ci_95_rows), ncol = 1)
+
+for (i in 1:nrow(ci_95_rows)) {
+  
+  FORM_SE_ESS_0.442 [i] <- ci_95_rows$FORM_BIGGEST_CI_ARM [i] / -qt(.025, df = ci_95_rows$FORM_ESS_0.442_ICC [i] -1)
+
+}
+
+ci_95_rows$FORM_SE_ESS_0.442 <- FORM_SE_ESS_0.442 [, 1]
+
+# FORM SE calculation using ESS (ICC = 0.046)
+FORM_SE_ESS_0.046 <- matrix(0, nrow = nrow(ci_95_rows), ncol = 1)
+
+for (i in 1:nrow(ci_95_rows)) {
+  
+  FORM_SE_ESS_0.046 [i] <- ci_95_rows$FORM_BIGGEST_CI_ARM [i] / -qt(.025, df = ci_95_rows$FORM_ESS_0.046_ICC [i] -1)
+
+}
+
+ci_95_rows$FORM_SE_ESS_0.046 <- FORM_SE_ESS_0.046 [, 1]
+
+# AI SE calculation using ESS (ICC = 0.442)
+AI_SE_ESS_0.442 <- matrix(0, nrow = nrow(ci_95_rows), ncol = 1)
+
+for (i in 1:nrow(ci_95_rows)) {
+  
+  AI_SE_ESS_0.442 [i] <- ci_95_rows$AI_BIGGEST_CI_ARM [i] / -qt(.025, df = ci_95_rows$AI_ESS_0.442_ICC [i] -1)
+
+}
+
+ci_95_rows$AI_SE_ESS_0.442 <- AI_SE_ESS_0.442 [, 1]
+
+# AI SE calculation using ESS (ICC = 0.046)
+AI_SE_ESS_0.046 <- matrix(0, nrow = nrow(ci_95_rows), ncol = 1)
+
+for (i in 1:nrow(ci_95_rows)) {
+  
+  AI_SE_ESS_0.046 [i] <- ci_95_rows$AI_BIGGEST_CI_ARM [i] / -qt(.025, df = ci_95_rows$AI_ESS_0.046_ICC [i] -1)
+
+}
+
+ci_95_rows$AI_SE_ESS_0.046 <- AI_SE_ESS_0.046 [, 1]
+```
+
+Add back in SE rows.
+
+```{r}
+SE_rows$AI_BIGGEST_CI_ARM <- NA 
+
+SE_rows$AI_N_INDIVIDUAL <- SE_rows$AI_N_CONTAINER * SE_rows$AI_N_INDIVIDUALS_PER_CONTAINER
+
+SE_rows$AI_SE_INDIVIDUAL <- SE_rows$AI_ERROR_LOWER
+
+SE_rows$AI_SE_CONTAINER <- SE_rows$AI_ERROR_LOWER
+
+SE_rows$AVERAGE_CLUSTER_SIZE <- NA
+
+SE_rows$FORM_BIGGEST_CI_ARM <- NA
+
+SE_rows$FORM_N_INDIVIDUAL <- SE_rows$FORM_N_CONTAINER * SE_rows$FORM_N_INDIVIDUALS_PER_CONTAINER
+
+SE_rows$FORM_SE_INDIVIDUAL <- SE_rows$FORM_ERROR_LOWER
+
+SE_rows$FORM_SE_CONTAINER <- SE_rows$FORM_ERROR_LOWER
+
+SE_rows$DESIGN_EFFECT_0.442_ICC <- NA
+
+SE_rows$AI_ESS_0.442_ICC <- NA
+
+SE_rows$FORM_ESS_0.442_ICC <- NA
+
+SE_rows$DESIGN_EFFECT_0.046_ICC <- NA
+
+SE_rows$AI_ESS_0.046_ICC <- NA 
+
+SE_rows$FORM_ESS_0.046_ICC <- NA
+
+SE_rows$FORM_SE_ESS_0.442 <- SE_rows$FORM_ERROR_LOWER
+
+SE_rows$FORM_SE_ESS_0.046 <- SE_rows$FORM_ERROR_LOWER
+
+SE_rows$AI_SE_ESS_0.442 <- SE_rows$AI_ERROR_LOWER
+  
+SE_rows$AI_SE_ESS_0.046 <- SE_rows$AI_ERROR_LOWER
+  
+# combine
+CI_SE_combined <- rbind(ci_95_rows, SE_rows)
+```
+
+Sort out row where there was one SE and one CI
+
+```{r}
+mixed_error_row <- different_error_type [1, ]
+
+# AI expressed as SE
+mixed_error_row$AI_BIGGEST_CI_ARM <- NA
+
+mixed_error_row$AI_N_INDIVIDUAL <- mixed_error_row$AI_N_CONTAINER * mixed_error_row$AI_N_INDIVIDUALS_PER_CONTAINER
+
+mixed_error_row$AI_SE_INDIVIDUAL <- mixed_error_row$AI_ERROR_LOWER
+
+mixed_error_row$AI_SE_CONTAINER <- mixed_error_row$AI_ERROR_LOWER
+
+# FORM expressed as CI. Lower error larger of the two so just manually insert.
+mixed_error_row$FORM_BIGGEST_CI_ARM <- NA
+
+mixed_error_row$FORM_N_INDIVIDUAL <- mixed_error_row$FORM_N_CONTAINER * mixed_error_row$FORM_N_INDIVIDUALS_PER_CONTAINER
+
+mixed_error_row$FORM_SE_INDIVIDUAL <- mixed_error_row$FORM_ERROR_LOWER / -qt(.025, df = mixed_error_row$FORM_N_INDIVIDUAL -1)
+
+mixed_error_row$FORM_SE_CONTAINER <- mixed_error_row$FORM_ERROR_LOWER / -qt(.025, df = mixed_error_row$FORM_N_CONTAINER -1)
+
+# average cluster size
+mixed_error_row$AVERAGE_CLUSTER_SIZE <- (mixed_error_row$FORM_N_CONTAINER * mixed_error_row$FORM_N_INDIVIDUALS_PER_CONTAINER) / (mixed_error_row$FORM_N_CONTAINER)
+
+# design effect for 0.442 ICC
+mixed_error_row$DESIGN_EFFECT_0.442_ICC <- 1 + (mixed_error_row$AVERAGE_CLUSTER_SIZE - 1) * 0.442
+
+# ESS for ai based on 0.442 ICC
+mixed_error_row$AI_ESS_0.442_ICC <- NA
+
+# ESS for form based on 0.442 ICC
+mixed_error_row$FORM_ESS_0.442_ICC <- mixed_error_row$FORM_N_INDIVIDUAL / mixed_error_row$DESIGN_EFFECT_0.442_ICC
+
+# design effect for 0.046 ICC
+mixed_error_row$DESIGN_EFFECT_0.046_ICC <- 1 + (mixed_error_row$AVERAGE_CLUSTER_SIZE - 1) * 0.046
+
+# ESS for ai based on 0.046 ICC
+mixed_error_row$AI_ESS_0.046_ICC <- NA 
+
+# ESS for FORM based on 0.046 ICC
+mixed_error_row$FORM_ESS_0.046_ICC <- mixed_error_row$FORM_N_INDIVIDUAL / mixed_error_row$DESIGN_EFFECT_0.046_ICC
+
+# FORM SE calculation using ESS (ICC = 0.442)
+FORM_SE_ESS_0.442 <- matrix(0, nrow = nrow(mixed_error_row), ncol = 1)
+
+for (i in 1:nrow(mixed_error_row)) {
+  
+  FORM_SE_ESS_0.442 [i] <- mixed_error_row$FORM_ERROR_LOWER [i] / -qt(.025, df = mixed_error_row$FORM_ESS_0.442_ICC [i] -1)
+
+}
+
+mixed_error_row$FORM_SE_ESS_0.442 <- FORM_SE_ESS_0.442 [, 1]
+
+# FORM SE calculation using ESS (ICC = 0.046)
+FORM_SE_ESS_0.046 <- matrix(0, nrow = nrow(mixed_error_row), ncol = 1)
+
+for (i in 1:nrow(mixed_error_row)) {
+  
+  FORM_SE_ESS_0.046 [i] <- mixed_error_row$FORM_ERROR_LOWER [i] / -qt(.025, df = mixed_error_row$FORM_ESS_0.046_ICC [i] -1)
+
+}
+
+mixed_error_row$FORM_SE_ESS_0.046 <- FORM_SE_ESS_0.046 [, 1]
+
+# AI SE calculation using ESS (ICC = 0.442)
+mixed_error_row$AI_SE_ESS_0.442 <- mixed_error_row$AI_ERROR_LOWER
+
+# AI SE calculation using ESS (ICC = 0.046)
+mixed_error_row$AI_SE_ESS_0.046 <- mixed_error_row$AI_ERROR_LOWER
+
+# combine
+CI_SE_combined <- rbind(CI_SE_combined, mixed_error_row)
+
+# cbind(CI_SE_combined$AI_SE_CONTAINER, CI_SE_combined$AI_SE_ESS_0.442, CI_SE_combined$AI_SE_ESS_0.046, CI_SE_combined$AI_SE_INDIVIDUAL)
+# above shows that as sample size gets bigger, the extracted SE gets bigger
+```
+
+Now calculate the ln(response ratio) and variance for each. Traditionally, LRR = ln(Xt/Xc). Do this for now and simply change the sign around if I want to demonstrate that the formulation is having a "greater" effect (positive). For now though, a negative sign shows the formulation is more toxic. 
+
+```{r}
+# calculate LRR
+CI_SE_combined$LRR <- log(CI_SE_combined$FORM_50/CI_SE_combined$AI_50)
+
+# calculate LRR variance using var(lnRR) = SE_FORM^2/mean_FORM^2 + SE_AI^2/mean_AI^2
+# individual SE variance
+CI_SE_combined$LRR_VAR_INDIVIDUAL <- (CI_SE_combined$FORM_SE_INDIVIDUAL^2 / CI_SE_combined$FORM_50^2) + (CI_SE_combined$AI_SE_INDIVIDUAL^2 / CI_SE_combined$AI_50^2)
+
+# container SE variance
+CI_SE_combined$LRR_VAR_CONTAINER <- (CI_SE_combined$FORM_SE_CONTAINER^2 / CI_SE_combined$FORM_50^2) + (CI_SE_combined$AI_SE_CONTAINER^2 / CI_SE_combined$AI_50^2)
+
+# ICC 0.442 SE variance
+CI_SE_combined$LRR_VAR_CONTAINER_0.442 <- (CI_SE_combined$FORM_SE_ESS_0.442^2 / CI_SE_combined$FORM_50^2) + (CI_SE_combined$AI_SE_ESS_0.442^2 / CI_SE_combined$AI_50^2)
+
+# ICC 0.046 SE variance
+CI_SE_combined$LRR_VAR_CONTAINER_0.046 <- (CI_SE_combined$FORM_SE_ESS_0.046^2 / CI_SE_combined$FORM_50^2) + (CI_SE_combined$AI_SE_ESS_0.046^2 / CI_SE_combined$AI_50^2)
+```
+
+Inspecting some of the variance values
+
+```{r}
+# variance from big to small
+cbind(CI_SE_combined$LRR_VAR_INDIVIDUAL, CI_SE_combined$LRR_VAR_CONTAINER_0.046, CI_SE_combined$LRR_VAR_CONTAINER_0.442, CI_SE_combined$LRR_VAR_CONTAINER)
+
+# this effect size has a very small variance because it has a sample size of 2. This made the t-dis value very large, making the SE small
+# in turn making the variance small.
+CI_SE_combined [87, ]
+
+# here the quoted CI was massive, so the SE is as well.
+CI_SE_combined [221, ]
+
+# sample size was 2
+CI_SE_combined [(CI_SE_combined$AI_N_INDIVIDUAL == 2) & (CI_SE_combined$FORM_N_INDIVIDUAL == 2), ]
+```
+
+Tidy up spreadsheet, removing columns not required for the analysis stage and reordering columns to create a more intuitive order
+
+```{r}
+CI_SE_combined_clean <- CI_SE_combined [ , c(1,2,3,5,8,12,14,17,22,23,24,26,27,28,29,30,31,32,33,35:45,48,49,4,51,52,68,67,53,13,55,56,66,65,57,69:73)]
+
+CI_SE_combined_clean <- CI_SE_combined_clean [, c(1,2,10,18,9,3:8,11:17,19:46,49,48,47)]
+```
+
+Extract the new spreadsheet
+
+```{r}
+write.csv(CI_SE_combined_clean, "lrr_vi.csv", row.names = FALSE)
+
+write.csv(CI_SE_combined, "lrr_vi_full.csv", row.names = FALSE)
+
+write.csv(missing_se, "missing_se.csv", row.names = FALSE)
+```
+
+Are low replicate studies the studies with the smallest variance? Some but not all of them had an FORM more toxic than an AI.
+
+```{r}
+# look at the CI_SE_combined ranked by Vi
+head(CI_SE_combined [order(CI_SE_combined$LRR_VAR_INDIVIDUAL), ], n = 20)
+```
+
+plot the standard error against the ED50.
+
+```{r}
+# remove 6 effect sizes with LRR_VAR_INDIVIDUAL > 10
+CI_SE_combined <- CI_SE_combined [CI_SE_combined$LRR_VAR_INDIVIDUAL < 10, ]
+
+# ai and form with SE
+se_imputation_df_ai <- cbind.data.frame(DATA_ID = CI_SE_combined$DATA_ID, ED_50 = CI_SE_combined$AI_50, SE = CI_SE_combined$AI_SE_INDIVIDUAL, FORM_AI = "AI")
+se_imputation_df_form <- cbind.data.frame(DATA_ID = CI_SE_combined$DATA_ID, ED_50 = CI_SE_combined$FORM_50, SE = CI_SE_combined$FORM_SE_INDIVIDUAL, FORM_AI = "FORM")
+
+# combine
+se_imputation_df <- rbind.data.frame(se_imputation_df_ai, se_imputation_df_form)
+
+se_imputation_df$FORM_AI <- as.factor(se_imputation_df$FORM_AI)
+
+# plot mean vs se. SE increases with ED_50?
+plot(se_imputation_df$SE ~ se_imputation_df$ED_50)
+
+# zoom in
+plot(se_imputation_df$SE [se_imputation_df$ED_50 < 2000] ~ se_imputation_df$ED_50 [se_imputation_df$ED_50 < 2000])
+
+# zoom in
+plot(se_imputation_df$SE [(se_imputation_df$ED_50 < 400) & (se_imputation_df$SE < 100)] ~ se_imputation_df$ED_50 [(se_imputation_df$ED_50 < 400) & (se_imputation_df$SE < 100)])
+
+# relationship seems to hold.
+
+# for the ED50s where I'm imputing their SE they will have large mean values. Therefore, they will be expected to have bigger SE?
+
+# express se as a proportion of ed50. This controls for the large range of ED50 values and SE getting larger with ED50
+# for se/ed50
+# this would make it unitless too (so the non-equivalent units would not matter)
+se_imputation_df$SE_PROP_ED_50 <- se_imputation_df$SE / se_imputation_df$ED_50
+
+# plot this proportion against the ED_50
+plot(se_imputation_df$SE_PROP_ED_50 ~ se_imputation_df$ED_50)
+
+# positive relationship seems to have disappeared
+plot(se_imputation_df$SE_PROP_ED_50 [se_imputation_df$ED_50 < 400] ~ se_imputation_df$ED_50 [se_imputation_df$ED_50 < 400])
+
+# se as a proportion of mean distribution
+plot(density(se_imputation_df$SE_PROP_ED_50))
+
+# estimate the distribution the SE_PROP_ED_50 follows instead of se?
+# fit a gamma distribution to the data
+library(fitdistrplus)
+
+# for < 1 add [se_imputation_df$SE_PROP_ED_50 < 1]
+SE_PROP_ED_50_gamma <- fitdist(se_imputation_df$SE_PROP_ED_50,
+               distr = "gamma",
+               method = "mle")
+
+summary(SE_PROP_ED_50_gamma)
+
+# the > 1 values result in the odd qqplot.
+plot(SE_PROP_ED_50_gamma)
+
+SE_PROP_ED_50_gamma_imputation <- rgamma(n = 118, shape = SE_PROP_ED_50_gamma$estimate [[1]], rate = SE_PROP_ED_50_gamma$estimate [[2]])
+
+min(SE_PROP_ED_50_gamma_imputation)
+max(SE_PROP_ED_50_gamma_imputation)
+
+# how many SEs do I need to impute in total? 118
+nrow(rbind.data.frame(missing_se [missing_se$AI_ERROR_TYPE == "n/a", ], missing_se [missing_se$FORM_ERROR_TYPE == "n/a", ]))
+```
+
+I want to impute the missing SEs, calculate the vi and fit the final model 100 times to see how sampling from the estimated gamma distribution affects the results.
+
