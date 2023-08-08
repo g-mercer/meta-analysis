@@ -24,6 +24,7 @@ library(clubSandwich)
 library(metagear)
 library(fitdistrplus)
 library(kableExtra)
+library(cowplot)
 # library(metaAidR) only there for reference.
 ```
 
@@ -31,7 +32,7 @@ Preparing df
 
 ```{r}
 # import
-extr_data <- read.csv("../../data_extraction/data_extraction_2x5.csv")
+extr_data <- read.csv("input/data_extraction_2x5.csv")
 
 # remove > values for AI and formulation from df
 extr_data_filt_ai <- extr_data [-grep(">", extr_data$AI_50), ]
@@ -428,6 +429,12 @@ Bind together the 360 effect sizes where vi can be calculated with 100 where it 
 
 ```{r}
 full_dataset <- bind_rows(CI_SE_combined, missing_se)
+
+# number of fungicide effect sizes in full dataset
+nrow(full_dataset [full_dataset$PESTICIDE_CLASS == "fungicide",])
+
+# number of algaecide effect sizes in full dataset
+nrow(full_dataset [full_dataset$PESTICIDE_CLASS == "algaecide",])
 ```
 
 Tidy up variables to get rid of whitespace at the end and get in correct class.
@@ -705,6 +712,10 @@ corrplot::corrplot(cov2cor(structure_check_matrix) [150:200, 150:200])
 corrplot::corrplot(cov2cor(structure_check_matrix) [200:250, 200:250])
 corrplot::corrplot(cov2cor(structure_check_matrix) [250:300, 250:300])
 corrplot::corrplot(cov2cor(structure_check_matrix) [300:348, 300:348])
+
+cairo_pdf("output/sampling_variance_correlation_150_200_plot.pdf")
+corrplot::corrplot(cov2cor(structure_check_matrix) [150:200, 150:200])
+dev.off()
 ```
 
 Define function so I can input se instead of sd and n when calculating common control VCV matrix
@@ -896,6 +907,11 @@ my_tree <- ape::multi2di(my_tree, random = TRUE)
 
 # create correlation matrix for analysis
 phylo_cor <- vcv(my_tree, cor = T)
+
+# save species tree
+cairo_pdf("output/species_tree_plot.pdf")
+plot(my_tree, type = "phylogram", cex = 0.3)
+dev.off()
 ```
 
 Starting with a NULL model with all the potential fixed effects and the autocorrelation vcv matrix.
@@ -1063,6 +1079,9 @@ ar_study_mod <- rma.mv(yi = LRR, V = autocorrelation_matrix,
                     struct = "AR",
                     data = full_data_red_no_sim, method = "ML", test = "t", dfs = "contain")
 
+# GVIF to check for collinearity between moderators. Cutoff of 5 or 10 are sometimes used.
+vif(ar_study_mod, btt = c("PESTICIDE_CLASS", "EXPOSURE_ROUTE", "FORMULATION_TYPE"))
+
 ar_study_mod_a <- rma.mv(yi = LRR, V = autocorrelation_matrix,
                     mod = ~ PESTICIDE_CLASS + EXPOSURE_ROUTE,
                     random = list(~1 | STUDY_ID,
@@ -1127,6 +1146,143 @@ mod.candidate <- dredge(ar_study_mod, beta = "none", evaluate = TRUE, rank = "AI
 subset(mod.candidate, delta <= 2, recalc.weights = FALSE)
 ```
 
+Formulation type is currently undermined by the "liquid formulation" level. This was when studied didn't provide sufficient information to distinguish which formulation type they used. Rerun the model selection stage setting liquid formulation to NA and n/a to NA. Perform the model selection again. For now perform this on the non-imputed dataset.
+
+Exposure route is also be simplified so all the oral exposure classes are combined leaving oral, contact, environmental.
+
+In addition, the interaction between pesticide class and formulation type was tested. The biological precedent for this is that insecticides are generally more toxic for animals (majority of the dataset) than herbicides. If certain formulation types aid absorption into non-target organism tissues it would increase the concentration of the AI in tissues where it can have toxic effects. If inherent AI toxicity is higher for insecticides compared herbicides/fungicides, it would follow that increase insecticide concentrations in target tissues would increase toxicity, where this is less likely to be the case for a herbicides are fungicides, where the AI is usually less toxic (and the proportional contribution of the co-formulants to total formulation toxicity is potentially higher).
+
+Results of model selection are the same.
+
+```{r}
+no_liquid_formulation_data <- full_data_red_no_sim
+
+# set liquid_formulation to NA
+for (i in 1:length(no_liquid_formulation_data$FORMULATION_TYPE)) {
+  
+  if ((no_liquid_formulation_data$FORMULATION_TYPE [i] == "liquid formulation") | (no_liquid_formulation_data$FORMULATION_TYPE [i] == "n/a")) {
+    
+    no_liquid_formulation_data$FORMULATION_TYPE [i] <- NA
+    
+  }
+  
+}
+
+# aggregate oral exposure levels
+levels(no_liquid_formulation_data$EXPOSURE_ROUTE) <- c(levels(no_liquid_formulation_data$EXPOSURE_ROUTE), "oral")
+
+for (i in 1:length(no_liquid_formulation_data$EXPOSURE_ROUTE)) {
+  
+  if (no_liquid_formulation_data$EXPOSURE_ROUTE [i] == "oral-gavage") {
+    
+    no_liquid_formulation_data$EXPOSURE_ROUTE [i] <- "oral"
+    
+  }
+
+  if (no_liquid_formulation_data$EXPOSURE_ROUTE [i] == "oral-food") {
+    
+    no_liquid_formulation_data$EXPOSURE_ROUTE [i] <- "oral"
+    
+  }
+  
+  if (no_liquid_formulation_data$EXPOSURE_ROUTE [i] == "oral-proventriculus") {
+    
+    no_liquid_formulation_data$EXPOSURE_ROUTE [i] <- "oral"
+    
+  }
+  
+}
+
+# filter the dataset removing the formulation_type NA values
+no_liquid_formulation_data <- no_liquid_formulation_data [!is.na(no_liquid_formulation_data$FORMULATION_TYPE), ]
+
+# new autocorrelation matrix
+autocorrelation_matrix_no_liq_form <- vcalc(vi = no_liquid_formulation_data$LRR_VAR_INDIVIDUAL,
+                                            cluster = MULTIPLE_MEASUREMENT,
+                                            time1 = TIME_SIMPLE,
+                                            phi= 0.8,
+                                            data= no_liquid_formulation_data)
+
+# model selection
+# interaction term between pesticide class and formulation type.
+# express using ML
+ar_study_mod_int <- rma.mv(yi = LRR, V = autocorrelation_matrix_no_liq_form,
+                    mod = ~ PESTICIDE_CLASS + EXPOSURE_ROUTE + FORMULATION_TYPE + PESTICIDE_CLASS:FORMULATION_TYPE,
+                    random = list(~1 | STUDY_ID,
+                                  ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
+                    struct = "AR",
+                    data = no_liquid_formulation_data, method = "ML", test = "t", dfs = "contain")
+
+ar_study_mod <- rma.mv(yi = LRR, V = autocorrelation_matrix_no_liq_form,
+                    mod = ~ PESTICIDE_CLASS + EXPOSURE_ROUTE + FORMULATION_TYPE,
+                    random = list(~1 | STUDY_ID,
+                                  ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
+                    struct = "AR",
+                    data = no_liquid_formulation_data, method = "ML", test = "t", dfs = "contain")
+
+# GVIF to check for collinearity between moderators. Cutoff of 5 or 10 are sometimes used.
+vif(ar_study_mod, btt = c("PESTICIDE_CLASS", "EXPOSURE_ROUTE", "FORMULATION_TYPE"))
+
+anova(ar_study_mod_int, ar_study_mod)
+
+# ar_study_mod now reference
+
+ar_study_mod_a <- rma.mv(yi = LRR, V = autocorrelation_matrix_no_liq_form,
+                    mod = ~ PESTICIDE_CLASS + EXPOSURE_ROUTE,
+                    random = list(~1 | STUDY_ID,
+                                  ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
+                    struct = "AR",
+                    data = no_liquid_formulation_data, method = "ML", test = "t", dfs = "contain")
+
+ar_study_mod_b <- rma.mv(yi = LRR, V = autocorrelation_matrix_no_liq_form,
+                    mod = ~ PESTICIDE_CLASS + FORMULATION_TYPE,
+                    random = list(~1 | STUDY_ID,
+                                  ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
+                    struct = "AR",
+                    data = no_liquid_formulation_data, method = "ML", test = "t", dfs = "contain")
+
+ar_study_mod_c <- rma.mv(yi = LRR, V = autocorrelation_matrix_no_liq_form,
+                    mod = ~ EXPOSURE_ROUTE + FORMULATION_TYPE,
+                    random = list(~1 | STUDY_ID,
+                                  ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
+                    struct = "AR",
+                    data = no_liquid_formulation_data, method = "ML", test = "t", dfs = "contain")
+
+anova(ar_study_mod, ar_study_mod_a)
+anova(ar_study_mod, ar_study_mod_b)
+anova(ar_study_mod, ar_study_mod_c)
+
+# ar_study_mod_b now reference
+ar_study_mod_b_a <- rma.mv(yi = LRR, V = autocorrelation_matrix_no_liq_form,
+                    mod = ~ PESTICIDE_CLASS,
+                    random = list(~1 | STUDY_ID,
+                                  ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
+                    struct = "AR",
+                    data = no_liquid_formulation_data, method = "ML", test = "t", dfs = "contain")
+
+ar_study_mod_b_b <- rma.mv(yi = LRR, V = autocorrelation_matrix_no_liq_form,
+                    mod = ~ FORMULATION_TYPE,
+                    random = list(~1 | STUDY_ID,
+                                  ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
+                    struct = "AR",
+                    data = no_liquid_formulation_data, method = "ML", test = "t", dfs = "contain")
+
+anova(ar_study_mod_b, ar_study_mod_b_a)
+anova(ar_study_mod_b, ar_study_mod_b_b)
+
+# ar_study_mod_b_a reference
+ar_study_mod_b_a_a <- rma.mv(yi = LRR, V = autocorrelation_matrix_no_liq_form,
+                    mod = ~ 1,
+                    random = list(~1 | STUDY_ID,
+                                  ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
+                    struct = "AR",
+                    data = no_liquid_formulation_data, method = "ML", test = "t", dfs = "contain")
+
+anova(ar_study_mod_b_a, ar_study_mod_b_a_a)
+
+summary(ar_study_mod_b_a)
+```
+
 So my final_model (at the moment) is this:
 
 ```{r}
@@ -1142,30 +1298,9 @@ summary(final_model)
 
 # RVE
 robust(final_model, cluster = full_data_red_no_sim$STUDY_ID, clubSandwich = TRUE)
-```
 
-No algaecides. Test of moderators without algaecides for RVE is now significant. Test of Moderators (coefficients 1:3):¹ F(df1 = 3, df2 = 14.86) = 5.1722, p-val = 0.0120, indicating that we can reject the null hypothesis that pesticide class has a null effect on the difference between ai and formulation toxicity.
-
-```{r}
-no_algaecides <- full_data_red_no_sim [full_data_red_no_sim$PESTICIDE_CLASS != "algaecide", ]
-
-no_algaecides_autocorrelation_matrix <- vcalc(vi = no_algaecides$LRR_VAR_INDIVIDUAL,
-               cluster = MULTIPLE_MEASUREMENT,
-               time1 = TIME_SIMPLE,
-               phi= 0.8,
-               data= no_algaecides)
-
-no_algaecides_model <-  rma.mv(yi = LRR, V = no_algaecides_autocorrelation_matrix,
-                        mod = ~ 0 + PESTICIDE_CLASS,
-                        random = list(~1 | STUDY_ID,
-                                      ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
-                        struct = "AR",
-                        data = no_algaecides, method = "REML", test = "t", dfs = "contain")
-
-summary(no_algaecides_model)
-
-# RVE
-robust(no_algaecides_model, cluster = no_algaecides$STUDY_ID, clubSandwich = TRUE)
+# PIs
+mod_results(final_model, group = "STUDY_ID", mod = "PESTICIDE_CLASS")$mod_table
 ```
 
 Comparing the CIs around herbicide for RVE and the normal approach shows that we have done a pretty good job at developing our working model.
@@ -1272,7 +1407,6 @@ final_model_simple_intercept <- rma.mv(yi = LRR, V = autocorrelation_matrix,
                     data = full_data_red_no_sim, method = "REML", test = "t", dfs = "contain")
 
 summary(final_model_simple_intercept)
-
 ```
 
 In the measuring heterogeneity of [shinichi guide](https://itchyshin.github.io/Meta-analysis_tutorial/#ref-midolo2019global) they quote,
@@ -1300,6 +1434,27 @@ r2_ml(simple_mod_selected)
 
 Pesticide class explains 7.9% of the variation between effect sizes. Sampling variance accounts for 0.175637%, between study variance for 38.106501% and within study variance 60.440277% + 1.277584% = 61.71786% (all roughly).
 
+Trying to work I^2 out with the final model [metafor I^2 guide](https://www.metafor-project.org/doku.php/tips:i2_multilevel_multivariate). Look at multivariate section within it.
+
+```{r}
+# adapted from source linked above
+W <- solve(autocorrelation_matrix)
+X <- model.matrix(final_model)
+P <- W - W %*% X %*% solve(t(X) %*% W %*% X) %*% t(X) %*% W
+
+# I^2 total
+100 * sum(final_model$sigma2,final_model$tau2) / (sum(final_model$sigma2,final_model$tau2) + (final_model$k-final_model$p)/sum(diag(P)))
+
+# between study
+100 * final_model$sigma2/ (sum(final_model$sigma2,final_model$tau2) + (final_model$k-final_model$p)/sum(diag(P)))
+
+# within study
+100 * final_model$tau2/ (sum(final_model$sigma2,final_model$tau2) + (final_model$k-final_model$p)/sum(diag(P)))
+
+# sampling variance
+100 - (100 * sum(final_model$sigma2,final_model$tau2) / (sum(final_model$sigma2,final_model$tau2) + (final_model$k-final_model$p)/sum(diag(P))))
+```
+
 Explore heterogeneity with prediction intervals. Shows there is a lot of heterogeneity and 95% of the time new effect size estimates will vary from -3.32 to 2.43.
 
 ```{r}
@@ -1309,10 +1464,18 @@ predict(final_model_intercept)
 Orchard Plot.
 
 ```{r}
-orchard_plot(final_model, 
-             mod = "PESTICIDE_CLASS", 
-             xlab = "Effect size lnRR", 
-             group = "STUDY_ID",  k = TRUE, g = TRUE, trunk.size = 1.5)
+final_model_orchard_plot <- orchard_plot(final_model, 
+                                         mod = "PESTICIDE_CLASS", 
+                                         xlab = "Effect size lnRR", 
+                                         group = "STUDY_ID",  k = TRUE, g = TRUE, trunk.size = 1.5)
+
+final_model_orchard_plot +
+  scale_fill_manual(values = c("#009E73", "#F0E442", "#CC79A7", "#56B4E9")) +
+  scale_colour_manual(values = c("#009E73", "#F0E442", "#CC79A7", "#56B4E9"))
+
+cairo_pdf("output/final_model_orchard_plot.pdf")
+final_model_orchard_plot
+dev.off()
 ```
 
 Post Model Fitting Checks
@@ -1323,6 +1486,35 @@ Makes sure that the likelihood surface around the ML/REML estimates is not flat 
 profile(final_model,
         progbar=TRUE,
         parallel="multicore")
+
+par(mfrow=c(3,1))
+
+profile.rma.mv(final_model,
+               tau2 = 1)
+
+profile.rma.mv(final_model,
+               sigma2 = 1)
+
+profile(final_model, rho=1, xlim=c(0.90, 1))
+
+
+cairo_pdf("output/parameter_identifiability.pdf")
+profile(final_model,
+        progbar=TRUE,
+        parallel="multicore")
+dev.off()
+
+cairo_pdf("output/parameter_identifiability.pdf")
+par(mfrow=c(3,1))
+
+profile.rma.mv(final_model,
+               tau2 = 1)
+
+profile.rma.mv(final_model,
+               sigma2 = 1)
+
+profile(final_model, rho=1, xlim=c(0.90, 1))
+dev.off()
 ```
 
 Publication Bias
@@ -1399,7 +1591,9 @@ predictions_sqrt_inv_n_tilda <- data.frame(sint = seq(min(full_data_red_no_sim$S
                                            lower = publication_bias_all_mod_predictions$ci.lb)
 
 predictions_sqrt_inv_n_tilda_plot <- ggplot() +
-                                     geom_point(data = full_data_red_no_sim, aes(x = SQRT_INV_N_TILDA, y = LRR)) +
+                                     geom_point(data = full_data_red_no_sim, aes(x = SQRT_INV_N_TILDA, y = LRR,
+                                                                                 group = PESTICIDE_CLASS,
+                                                                                 color = PESTICIDE_CLASS)) +
                                      geom_line(data = predictions_sqrt_inv_n_tilda, aes(x = sint, y = fit, group = PESTICIDE_CLASS,
                                                                                         color = PESTICIDE_CLASS)) + 
                                      geom_ribbon(data = predictions_sqrt_inv_n_tilda, aes(x = sint, y = fit, ymin = lower, ymax = upper,
@@ -1407,13 +1601,21 @@ predictions_sqrt_inv_n_tilda_plot <- ggplot() +
                                                                                           fill = PESTICIDE_CLASS), alpha = 0.3) +
                                      theme_bw() +
                                      theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
-                                     scale_color_manual(values=c("#117733"), name = "Pesticide Class", labels = c("Herbicide")) +
-                                     scale_fill_manual(values=c("#117733"), name = "Pesticide Class", labels = c("Herbicide")) +
+                                     scale_color_manual(values = c("#009E73", "#F0E442", "#CC79A7", "#56B4E9"),
+                                                        name = "Pesticide Class", labels = c("Algaecide", "Fungicide", "Herbicide", "Insecticide")) +
+                                     scale_fill_manual(values = c("#CC79A7"),
+                                                       name = "", labels = c("")) +
                                      xlab("Square root of inverse of effective sample size") +
                                      ylab("Effect size (lnRR)") +
-                                     ggtitle("Does the effect size increase in magnitude as uncertainty increases?")
+                                     ggtitle("Does the effect size increase in magnitude as uncertainty increases?") +
+                                     guides(color=guide_legend(override.aes=list(fill=NA, linetype=0)),
+                                            fill = "none")
 
 predictions_sqrt_inv_n_tilda_plot
+
+cairo_pdf("output/small_study_effect.pdf")
+predictions_sqrt_inv_n_tilda_plot
+dev.off()
 
 # predictions for sint = 0 and herbicide. No interaction term so 
 # relationship the same for all PESTICIDE_CLASS levels
@@ -1439,8 +1641,10 @@ predictions_year_cen <- data.frame(YEAR_PUBLISHED = seq(min(full_data_red_no_sim
                                                     upper = publication_bias_all_mod_predictions_year_cen$ci.ub,
                                                     lower = publication_bias_all_mod_predictions_year_cen$ci.lb)
 
+
 predictions_year_cen_plot <- ggplot() +
-                                     geom_point(data = full_data_red_no_sim, aes(x = YEAR_PUBLISHED, y = LRR)) +
+                                     geom_point(data = full_data_red_no_sim, aes(x = YEAR_PUBLISHED, y = LRR, group = PESTICIDE_CLASS,
+                                                                                 color = PESTICIDE_CLASS)) +
                                      geom_line(data = predictions_year_cen, aes(x = YEAR_PUBLISHED, y = fit, group = PESTICIDE_CLASS,
                                                                                         color = PESTICIDE_CLASS)) + 
                                      geom_ribbon(data = predictions_year_cen, aes(x = YEAR_PUBLISHED, y = fit, ymin = lower, ymax = upper,
@@ -1448,13 +1652,21 @@ predictions_year_cen_plot <- ggplot() +
                                                                                           fill = PESTICIDE_CLASS), alpha = 0.3) +
                                      theme_bw() +
                                      theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
-                                     scale_color_manual(values=c("#117733"), name = "Pesticide Class", labels = c("Herbicide")) +
-                                     scale_fill_manual(values=c("#117733"), name = "Pesticide Class", labels = c("Herbicide")) +
+                                     scale_color_manual(values = c("#009E73", "#F0E442", "#CC79A7", "#56B4E9"),
+                                                        name = "Pesticide Class", labels = c("Algaecide", "Fungicide", "Herbicide", "Insecticide")) +
+                                     scale_fill_manual(values = c("#CC79A7"),
+                                                       name = "", labels = c("")) +
                                      xlab("Year of Publication") +
                                      ylab("Effect size (lnRR)") +
-                                     ggtitle("Does the effect size magnitude reduce with time?")
+                                     ggtitle("Does the effect size magnitude reduce with time?") +
+                                     guides(color=guide_legend(override.aes=list(fill=NA, linetype=0)),
+                                            fill = "none")
 
 predictions_year_cen_plot
+
+cairo_pdf("output/decline_effect.pdf")
+predictions_year_cen_plot
+dev.off()
 ```
 
 Adjusting overall effect size estimates to account for publication bias. My final model has a term where there is evidence that some groups have non-zero effects. This means I should use inverse n tilda.
@@ -1555,7 +1767,11 @@ se_imputation_df$FORM_AI <- as.factor(se_imputation_df$FORM_AI)
 plot(se_imputation_df$SE [!is.na(se_imputation_df$SE)] ~ se_imputation_df$ED_50 [!is.na(se_imputation_df$SE)])
 
 # zoom in
-plot(se_imputation_df$SE [(se_imputation_df$ED_50 < 2000) & (se_imputation_df$SE < 200) & (!is.na(se_imputation_df$SE))] ~ se_imputation_df$ED_50 [(se_imputation_df$ED_50 < 2000) & (se_imputation_df$SE < 200) & (!is.na(se_imputation_df$SE))])
+plot(se_imputation_df$SE [(se_imputation_df$ED_50 < 2000) & (se_imputation_df$SE < 200) & (!is.na(se_imputation_df$SE))] ~ se_imputation_df$ED_50 [(se_imputation_df$ED_50 < 2000) & (se_imputation_df$SE < 200) & (!is.na(se_imputation_df$SE))], ylab = "SE < 200", xlab = "TDD < 2000")
+
+cairo_pdf("output/se_tdd_relationship.pdf")
+plot(se_imputation_df$SE [(se_imputation_df$ED_50 < 2000) & (se_imputation_df$SE < 200) & (!is.na(se_imputation_df$SE))] ~ se_imputation_df$ED_50 [(se_imputation_df$ED_50 < 2000) & (se_imputation_df$SE < 200) & (!is.na(se_imputation_df$SE))], ylab = "SE < 200", xlab = "TDD < 2000")
+dev.off()
 
 # SE seems to increase with ED50. The data that needs to be imputed is non-random. Usually 
 # bigger ED50 values.
@@ -1569,7 +1785,11 @@ se_imputation_df$SE_PROP_ED_50 <- se_imputation_df$SE / se_imputation_df$ED_50
 plot(se_imputation_df$SE_PROP_ED_50 [!is.na(se_imputation_df$SE)] ~ se_imputation_df$ED_50 [!is.na(se_imputation_df$SE)])
 
 # positive relationship seems to have disappeared
-plot(se_imputation_df$SE_PROP_ED_50 [(se_imputation_df$ED_50 < 400) & (se_imputation_df$SE_PROP_ED_50 < 5) & (!is.na(se_imputation_df$SE))] ~ se_imputation_df$ED_50 [(se_imputation_df$ED_50 < 400) & (se_imputation_df$SE_PROP_ED_50 < 5) & (!is.na(se_imputation_df$SE))])
+plot(se_imputation_df$SE_PROP_ED_50 [(se_imputation_df$ED_50 < 2000) & (se_imputation_df$SE_PROP_ED_50 < 5) & (!is.na(se_imputation_df$SE))] ~ se_imputation_df$ED_50 [(se_imputation_df$ED_50 < 2000) & (se_imputation_df$SE_PROP_ED_50 < 5) & (!is.na(se_imputation_df$SE))], xlab = "TDD < 2000", ylab = "SE / TDD <5")
+
+cairo_pdf("output/se_prop_tdd_tdd_plot.pdf")
+plot(se_imputation_df$SE_PROP_ED_50 [(se_imputation_df$ED_50 < 2000) & (se_imputation_df$SE_PROP_ED_50 < 5) & (!is.na(se_imputation_df$SE))] ~ se_imputation_df$ED_50 [(se_imputation_df$ED_50 < 2000) & (se_imputation_df$SE_PROP_ED_50 < 5) & (!is.na(se_imputation_df$SE))], xlab = "TDD < 2000", ylab = "SE / TDD < 5")
+dev.off()
 
 # se as a proportion of mean distribution
 plot(density(se_imputation_df$SE_PROP_ED_50 [!is.na(se_imputation_df$SE)]))
@@ -1598,12 +1818,16 @@ min(SE_PROP_ED_50_gamma_imputation)
 max(SE_PROP_ED_50_gamma_imputation)
 ```
 
-I want to impute the missing SEs, calculate the vi and fit the final model 101 times to see how sampling from the estimated gamma distribution affects the model estimates.
+I want to impute the missing SEs, calculate the vi and fit the final model 100 times to see how sampling from the estimated gamma distribution affects the model estimates.
 
 ```{r}
 # give this factor a new imputed level
 levels(full_dataset_reduced$AI_ERROR_TYPE) <- c("CI_95", "n/a", "SE", "imputed")
 levels(full_dataset_reduced$FORM_ERROR_TYPE) <- c("CI_95", "n/a", "SE", "imputed")
+
+# only necessary for beeswarm plot
+# levels(full_dataset$AI_ERROR_TYPE) <- c("CI_95", "n/a", "SE", "imputed")
+# levels(full_dataset$FORM_ERROR_TYPE) <- c("CI_95", "n/a", "SE", "imputed")
 
 imputed_data <- list()
 imputed_model <- list()
@@ -1612,6 +1836,9 @@ imputed_vcv <- list()
 for (h in 1:100) {
   
   message(paste0("Now running model ", h, sep = ""))
+  
+  # only run this instead of the line below when creating the beeswarm plot
+  # dat <- full_dataset
   
   dat <- full_dataset_reduced
   
@@ -1742,7 +1969,7 @@ knitr::kable(imputation_estimates,
 
 my interpretation is that reimputing the SE doesn't result in much change in the LRR. Including the imputed data makes the herbicide effect size bigger but re drawing from the estimated distribution I defined to impute the SE doesn't result in much variation, particularly for herbicides and insecticides.
 
-when using the imputed data select the median model in terms of herbicide estimate. Impute 101 models the 51st is selected.
+when using the imputed data select the median model in terms of herbicide estimate. Impute 100 models the 50st is selected.
 
 ```{r}
 # what is the median model in terms of herbicide LRR estimate?
@@ -1821,9 +2048,18 @@ knitr::kable(imputed_non_imputed_table_df,
   save_kable("output/imputed_non_imputed_comparison.pdf")
 ```
 
-ii) Imputed and non-imputed data without glyphosate
+Orchard plot with imputed data
 
-both imputed and non-imputed datasets have same patterns of results without glyphosate
+```{r}
+orchard_plot(median_imputed_model, 
+             mod = "PESTICIDE_CLASS", 
+             xlab = "Effect size lnRR", 
+             group = "STUDY_ID",  k = TRUE, g = TRUE, trunk.size = 1.5)
+```
+
+ii) Non-imputed data without glyphosate
+
+Herbicide formulations are more toxic than AIs when glyphosate is excluded.
 
 ```{r}
 # non-imputed data without glyphosate
@@ -1845,6 +2081,11 @@ non_imputed_no_glyphosate_model <- rma.mv(yi = LRR, V = autocorrelation_matrix_n
 summary(non_imputed_no_glyphosate_model)
 
 robust(non_imputed_no_glyphosate_model, cluster = non_imputed_no_glyphosate_df$STUDY_ID, clubSandwich = TRUE)
+
+# number of herbicide effect sizes
+nrow(non_imputed_no_glyphosate_df [non_imputed_no_glyphosate_df$PESTICIDE_CLASS == "herbicide", ])
+# number of herbicide studies
+length(unique(non_imputed_no_glyphosate_df [non_imputed_no_glyphosate_df$PESTICIDE_CLASS == "herbicide", ]$STUDY_ID))
 
 # use kable and kableExtra on this
 gly_no_gly_table_df <- bind_rows(est.func(final_model), est.func(non_imputed_no_glyphosate_model))
@@ -1889,25 +2130,32 @@ robust(non_imputed_glyphosate_model, cluster = non_imputed_glyphosate_df$STUDY_I
 predict(non_imputed_glyphosate_model)
 
 # orchard plot only for glyphosate
-orchard_plot(non_imputed_glyphosate_model,
-             xlab = "Effect size lnRR", 
-             group = "STUDY_ID",  k = TRUE, g = TRUE, trunk.size = 1.5)
+glyphosate_orchard_plot <- orchard_plot(non_imputed_glyphosate_model,
+                                        xlab = "Effect size lnRR",
+                                        group = "STUDY_ID",  k = TRUE, g = TRUE, trunk.size = 1.5) +
+  scale_fill_manual(values = c("#999999")) +
+  scale_colour_manual(values = c("#999999")) +
+  ggtitle("Estimated mean effect for glyphosate")
+
+cairo_pdf("output/glyphosate_orchard_plot.pdf", height = 6, width = 10)
+glyphosate_orchard_plot
+dev.off()
 
 # imputed
 imputed_glyphosate_df <- median_imputed_data [(median_imputed_data$AI_NAME == "glyphosate") | (median_imputed_data$AI_NAME == "glyphosate-IPA"), ]
 
-autocorrelation_matrix_gly_imputed <- vcalc(vi = imputed_glyphosate_df$LRR_VAR_INDIVIDUAL,
+autocorrelation_matrix_gly_imputed <-  vcalc(vi = imputed_glyphosate_df$LRR_VAR_INDIVIDUAL,
                                        cluster = MULTIPLE_MEASUREMENT,
                                        time1 = TIME_SIMPLE,
                                        phi= 0.8,
                                        data= imputed_glyphosate_df)
   
 imputed_glyphosate_model <- rma.mv(yi = LRR, V = autocorrelation_matrix_gly_imputed,
-                                          mod = ~ 1,
-                                          random = list(~1 | STUDY_ID,
+                                        mod = ~ 1,
+                                        random = list(~1 | STUDY_ID,
                                                         ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
-                                          struct = "AR",
-                                          data = imputed_glyphosate_df, method = "REML", test = "t", dfs = "contain")
+                                        struct = "AR",
+                                        data = imputed_glyphosate_df, method = "REML", test = "t", dfs = "contain")
 
 summary(imputed_glyphosate_model)
 
@@ -1939,6 +2187,10 @@ summary(non_imputed_guidelines_model)
 
 robust(non_imputed_guidelines_model, cluster = non_imputed_guidelines_df$STUDY_ID, clubSandwich = TRUE)
 
+# pesticide class wise sample sizes for effect and study
+sort(table(non_imputed_guidelines_df$PESTICIDE_CLASS), decreasing=TRUE)
+length(unique(non_imputed_guidelines_df [non_imputed_guidelines_df$PESTICIDE_CLASS == "herbicide", ]$STUDY_ID))
+
 # use kable and kableExtra on this
 full_guide_table_df <- bind_rows(est.func(final_model), est.func(non_imputed_guidelines_model))
 
@@ -1951,43 +2203,6 @@ knitr::kable(full_guide_table_df,
   add_header_above(c(" " = 1, "Algaecide" = 3, "Fungicide" = 3, "Herbicide" = 3, "Insecticide" = 3)) %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
   save_kable("output/full_guidelines_comparison.pdf")
-```
-
-v) Only look at end use liquid treatments.
-
-```{r}
-# non-imputed
-non_imputed_sprays_df <- full_data_red_no_sim [(full_data_red_no_sim$FORMULATION_TYPE != "dustable powder") & (full_data_red_no_sim$FORMULATION_TYPE != "granule"), ]
-
-autocorrelation_matrix_sprays_non_imputed <- vcalc(vi = non_imputed_sprays_df$LRR_VAR_INDIVIDUAL,
-                                       cluster = MULTIPLE_MEASUREMENT,
-                                       time1 = TIME_SIMPLE,
-                                       phi= 0.8,
-                                       data= non_imputed_sprays_df)
-  
-non_imputed_sprays_model <- rma.mv(yi = LRR, V = autocorrelation_matrix_sprays_non_imputed,
-                                          mod = ~ 0 + PESTICIDE_CLASS,
-                                          random = list(~1 | STUDY_ID,
-                                                        ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
-                                          struct = "AR",
-                                          data = non_imputed_sprays_df, method = "REML", test = "t", dfs = "contain")
-
-summary(non_imputed_sprays_model)
-
-robust(non_imputed_sprays_model, cluster = non_imputed_sprays_df$STUDY_ID, clubSandwich = TRUE)
-
-# use kable and kableExtra on this
-full_sprays_table_df <- bind_rows(est.func(final_model), est.func(non_imputed_sprays_model))
-
-full_sprays_table_df <- bind_cols(c("final", "sprays"), full_sprays_table_df)
-
-knitr::kable(full_sprays_table_df,
-             "html",
-             digits = 4,
-             col.names = c(" ", rep(c("estimate", "lower", "upper"), 4))) %>%
-  add_header_above(c(" " = 1, "Algaecide" = 3, "Fungicide" = 3, "Herbicide" = 3, "Insecticide" = 3)) %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-  save_kable("output/full_sprays_comparison.pdf")
 ```
 
 vi) Adjusted for publication bias
@@ -2073,6 +2288,10 @@ summary(non_imputed_no_influential_model)
 
 robust(non_imputed_no_influential_model, cluster = full_dataset_no_influential$STUDY_ID, clubSandwich = TRUE)
 
+# number of herbicide effect sizes and studies
+nrow(full_dataset_no_influential [(full_dataset_no_influential$PESTICIDE_CLASS == "herbicide") & (full_dataset_no_influential$SE_SIMULATION_REQUIRED == "NO"), ])
+length(unique(full_dataset_no_influential [full_dataset_no_influential$PESTICIDE_CLASS == "herbicide" & (full_dataset_no_influential$SE_SIMULATION_REQUIRED == "NO"), ]$STUDY_ID))
+
 # use kable and kableExtra on this
 full_final_table_df <- bind_rows(est.func(final_model), est.func(non_imputed_no_influential_model))
 
@@ -2090,23 +2309,30 @@ knitr::kable(full_final_table_df,
 ix) The effect of the two influential points identified earlier. Run all the non-imputed data together. Shows that fungicide becomes significant but RVE disagrees with this.
 
 ```{r}
+# final_dataset plus two influential points
+final_plus_influential <- bind_rows(full_data_red_no_sim, full_dataset [full_dataset$STUDY_ID == "wos858", ])
+
 # non-imputed
-autocorrelation_matrix_full_influential_non_imputed <- vcalc(vi = full_dataset$LRR_VAR_INDIVIDUAL,
+autocorrelation_matrix_full_influential_non_imputed <- vcalc(vi = final_plus_influential$LRR_VAR_INDIVIDUAL,
                                        cluster = MULTIPLE_MEASUREMENT,
                                        time1 = TIME_SIMPLE,
                                        phi= 0.8,
-                                       data= full_dataset)
+                                       data= final_plus_influential)
   
 non_imputed_full_model <- rma.mv(yi = LRR, V = autocorrelation_matrix_full_influential_non_imputed,
                                           mod = ~ 0 + PESTICIDE_CLASS,
                                           random = list(~1 | STUDY_ID,
                                                         ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
                                           struct = "AR",
-                                          data = full_dataset, method = "REML", test = "t", dfs = "contain")
+                                          data = final_plus_influential, method = "REML", test = "t", dfs = "contain")
 
 summary(non_imputed_full_model)
 
-robust(non_imputed_full_model, cluster = full_dataset$STUDY_ID, clubSandwich = TRUE)
+robust(non_imputed_full_model, cluster = final_plus_influential$STUDY_ID, clubSandwich = TRUE)
+
+# number of fungicide effect sizes and studies
+nrow(final_plus_influential [final_plus_influential$PESTICIDE_CLASS == "fungicide", ])
+length(unique(final_plus_influential [final_plus_influential$PESTICIDE_CLASS == "fungicide", ]$STUDY_ID))
 
 # use kable and kableExtra on this
 final_influential_table_df <- bind_rows(est.func(final_model), est.func(non_imputed_full_model))
@@ -2144,6 +2370,11 @@ non_imputed_animals_model <- rma.mv(yi = LRR, V = autocorrelation_matrix_animals
 summary(non_imputed_animals_model)
 
 robust(non_imputed_animals_model, cluster = non_imputed_animals_df$STUDY_ID, clubSandwich = TRUE)
+
+# number of herbicide effect sizes and studies
+nrow(non_imputed_animals_df [non_imputed_animals_df$PESTICIDE_CLASS == "herbicide", ])
+length(unique(non_imputed_animals_df [non_imputed_animals_df$PESTICIDE_CLASS == "herbicide", ]$STUDY_ID))
+
 
 # use kable and kableExtra on this
 final_animal_table_df <- bind_rows(est.func(final_model), est.func(non_imputed_animals_model))
@@ -2190,16 +2421,6 @@ knitr::kable(combined_sensitivity_table_df,
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
   save_kable("output/combined_sensitivity_comparison.pdf")
 ```
-
-Of everything I have done above there are 4 areas I am not fully happy with.
-
-i) Imputation. Is this a valid approach? I think so as gamma distributions have been used in the literature to estimate variance distributions. My attempt of using the proportion hopefully tackled the unit issue and non-randomness of the missing data.
-
-ii) Heterogeneity. I had to run these checks on a model with a simplified random structure as the package orchaRd didn't take autoregressive correlation structures. This section is there to give a rough approximation of the heterogeneity
-
-iii) Sampling VCV matrices. I didn't manage to combine common control and multiple measurement in vcalc even though it is definitely possible. Below I have run my main model with the autocorrelation structure and then the common control structure to highlight that it doesn't change the results much.
-
-iv) Publication bias. For the uncertainty section I had a non-significant positive slope, which resulted in my adjusted values being more significant than the actual values. I think the reason behind this is there were few studies with very small sample size and they happened to test pesticides with formulations that weren't more toxic than their AI. This resulted in this non-significant positive slope. If more studies with small sample sizes had existed on a broader range of pesticides this relationship wouldn't have existed.
 
 Compare the final_model with the autocorrelation VCV to the final_model with the common control matrix. Basically the same.
 
@@ -2458,7 +2679,7 @@ lrr_variances_comparison_table_df [, 2:ncol(lrr_variances_comparison_table_df)] 
 write.csv(x = lrr_variances_comparison_table_df, file = "output/sample_size_variance_comparison.csv", row.names = FALSE)
 ```
 
-Exclusion Table
+Table of excluded effect sizes and reasons.
 
 ```{r}
 excluded_table <- excluded_df [7:18, c(1, 2, 50)]
@@ -2472,7 +2693,7 @@ knitr::kable(excluded_table,
   save_kable("output/excluded_effect_sizes.pdf")
 ```
 
-Another sensitivity analysis to perform is to filter only the CIs calculated by probit, perform an inverse probit transformation to get symmetrical CIs and perform the analysis again (extracting SE, calculate vi, fit final model).
+The below chunk calculates descriptions of the dataset.
 
 ```{r}
 # how many AIs are there in the final dataset?
@@ -2507,7 +2728,234 @@ sort(table(full_data_red_no_sim$FORM_NAME),decreasing=TRUE)
 # how many of each species
 sort(table(full_data_red_no_sim$SPECIES_NAME_BINOMIAL_OTL),decreasing=TRUE)
 
-# how many of each species
-sort(table(full_data_red_no_sim$FORMULATION_TYPE),decreasing=TRUE)
+# how many of each formulation type
+sort(table(no_liquid_formulation_data$FORMULATION_TYPE),decreasing=TRUE)
+
+# regulatory guidelines followed
+sort(table(full_data_red_no_sim$REGULATORY_STANDARDISED_GUIDELINES_FOLLOWED),decreasing=TRUE)
+
+# kingdom proportions
+sort(table(full_data_red_no_sim$SPECIES_KINGDOM),decreasing=TRUE)
+
+# span of years
+sort(full_data_red_no_sim$YEAR_PUBLISHED)
+
+# how many of the imputed effect sizes were herbicides
+nrow(missing_se [missing_se$PESTICIDE_CLASS == "herbicide", ])
+
+# how many of these had more toxic formulations
+nrow(missing_se [(missing_se$PESTICIDE_CLASS == "herbicide") & (missing_se$AI_50 > missing_se$FORM_50), ])
+
+# what proportion of the herbicide effect sizes did glyphosate represent?
+sort(table(full_data_red_no_sim [full_data_red_no_sim$PESTICIDE_CLASS == "herbicide", ]$AI_NAME), decreasing=TRUE)
+
+# how many formulation types were present for herbicides in full dataset
+unique(full_dataset [full_dataset$PESTICIDE_CLASS == "herbicide", ]$FORMULATION_TYPE)
+
+# how many formulation types were present for insecticides in full dataset
+unique(full_dataset [full_dataset$PESTICIDE_CLASS == "insecticide", ]$FORMULATION_TYPE)
 ```
 
+Combined orchard plots for non-imputed and imputed result.
+
+```{r}
+final_model_orchard_plot <- orchard_plot(final_model, 
+                                         mod = "PESTICIDE_CLASS", 
+                                         xlab = "Effect size lnRR", 
+                                         group = "STUDY_ID",  k = TRUE, g = TRUE, trunk.size = 1.5)
+
+final_model_orchard_plot <- final_model_orchard_plot +
+  scale_fill_manual(values = c("#009E73", "#F0E442", "#CC79A7", "#56B4E9")) +
+  scale_colour_manual(values = c("#009E73", "#F0E442", "#CC79A7", "#56B4E9")) +
+  ggtitle("Final model")
+
+imputed_model_orchard_plot <- orchard_plot(median_imputed_model, 
+             mod = "PESTICIDE_CLASS", 
+             xlab = "Effect size lnRR", 
+             group = "STUDY_ID",  k = TRUE, g = TRUE, trunk.size = 1.5)
+
+imputed_model_orchard_plot <- imputed_model_orchard_plot +
+  scale_fill_manual(values = c("#009E73", "#F0E442", "#CC79A7", "#56B4E9")) +
+  scale_colour_manual(values = c("#009E73", "#F0E442", "#CC79A7", "#56B4E9")) +
+  ggtitle("Final model with imputed data")
+
+# use cowplot to create a grid
+cairo_pdf("output/main_analysis_orchard_plots_results.pdf", width = 10, height = 6)
+plot_grid(final_model_orchard_plot, imputed_model_orchard_plot, labels = c('A', 'B'))
+dev.off()
+```
+
+Combined orchard plot for imputed and non-imputed result for glyphosate only dataset.
+
+```{r}
+# orchard plot only for glyphosate
+glyphosate_orchard_plot <- orchard_plot(non_imputed_glyphosate_model,
+                                        xlab = "Effect size lnRR",
+                                        group = "STUDY_ID",  k = TRUE, g = TRUE, trunk.size = 1.5) +
+  scale_fill_manual(values = c("#999999")) +
+  scale_colour_manual(values = c("#999999")) +
+  ggtitle("Estimated mean effect for glyphosate")
+
+glyphosate_imputed_orchard_plot <- orchard_plot(imputed_glyphosate_model,
+                                        xlab = "Effect size lnRR",
+                                        group = "STUDY_ID",  k = TRUE, g = TRUE, trunk.size = 1.5) +
+  scale_fill_manual(values = c("#999999")) +
+  scale_colour_manual(values = c("#999999")) +
+  ggtitle("Estimated mean effect for glyphosate with imputed data")
+
+# use cowplot to create a grid
+cairo_pdf("output/glyphosate_analysis_orchard_plots_results.pdf", width = 10, height = 6)
+plot_grid(glyphosate_orchard_plot, glyphosate_imputed_orchard_plot, labels = c('A', 'B'))
+dev.off()
+```
+
+Look for the decline effect in glyphosate/roundup studies. Not present in either the non-imputed or imputed datasets. This is a pretty crude analysis. I've based Roundup composition changing according to year, which may not be strictly be true. Some of the countries these tests were performed in may have less stringent regulatory bodies, where it takes longer to restrict more toxic co-formulants.
+
+```{r}
+# only run one of the lines below to load either the imputed or non-imputed dataset.
+# non-imputed
+roundup_only <- full_data_red_no_sim [grep("Roundup", full_data_red_no_sim$FORM_NAME), ]
+
+# with imputed
+roundup_only <- median_imputed_data [grep("Roundup", median_imputed_data$FORM_NAME), ]
+
+# make a year centred variable
+roundup_only$YEAR_CEN <- roundup_only$YEAR_PUBLISHED - mean(roundup_only$YEAR_PUBLISHED)
+
+autocorrelation_matrix_roundup <- vcalc(vi = roundup_only$LRR_VAR_INDIVIDUAL,
+                                       cluster = MULTIPLE_MEASUREMENT,
+                                       time1 = TIME_SIMPLE,
+                                       phi= 0.8,
+                                       data= roundup_only)
+  
+roundup_model <- rma.mv(yi = LRR, V = autocorrelation_matrix_roundup,
+                                          mod = ~ YEAR_CEN,
+                                          random = list(~1 | STUDY_ID,
+                                                        ~ TIME_SIMPLE | MULTIPLE_MEASUREMENT),
+                                          struct = "AR",
+                                          data = roundup_only, method = "REML", test = "t", dfs = "contain")
+
+summary(roundup_model)
+
+robust(roundup_model, cluster = roundup_only$STUDY_ID, clubSandwich = TRUE)
+
+roundup_year_cen_pred <- predict(roundup_model,
+                                 newmods = seq(min(roundup_only$YEAR_CEN),
+                                               max(roundup_only$YEAR_CEN),
+                                               length.out = 324))
+
+predictions_roundup <- data.frame(YEAR_PUBLISHED = seq(min(roundup_only$YEAR_PUBLISHED),
+                                                       max(roundup_only$YEAR_PUBLISHED),
+                                                       length.out=324),
+                                  fit = roundup_year_cen_pred$pred,
+                                  upper = roundup_year_cen_pred$ci.ub,
+                                  lower = roundup_year_cen_pred$ci.lb)
+
+roundup_plot <- ggplot() +
+  geom_point(data = roundup_only, aes(x = YEAR_PUBLISHED, y = LRR)) +
+  geom_line(data = predictions_roundup, aes(x = YEAR_PUBLISHED, y = fit)) +
+  geom_ribbon(data = predictions_roundup, aes(x = YEAR_PUBLISHED, y = fit, ymin = lower, ymax = upper, alpha = 0.3)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  xlab("Year of Publication") +
+  ylab("Effect size (lnRR)") +
+  ggtitle("Does the effect size magnitude for Roundup formulations reduce with time?") +
+  theme(legend.position = "none")
+  
+cairo_pdf("output/roundup_decline_effect_plot.pdf")
+roundup_plot
+dev.off()
+```
+
+Plot of relative PPP mortality.
+
+Fit an intercept only model. Generate an Orchard plot, then put horizontal dashed lines denoting the half and double toxic thresholds. Use the imputed data as I am only looking at the LRR for this, which isn't impacted by SE.
+
+```{r}
+library(ggbeeswarm)
+
+# this won't give 460 effect sizes unless the imputation loop is altered to include
+# the full_dataset instead of full_dataset_reduced
+color_above <- log(2)
+color_below <- log(0.5)
+
+median_imputed_data$color <- ifelse(median_imputed_data$LRR > color_above | median_imputed_data$LRR < color_below,
+                                    "color",
+                                    NA_character_)
+
+nrow(median_imputed_data [median_imputed_data$LRR > color_above, ])
+nrow(median_imputed_data [median_imputed_data$LRR < color_below, ])
+
+factor_two_mortality_diff_plot <- ggplot(median_imputed_data, aes(x = "", y = LRR, size = 1/sqrt(LRR_VAR_INDIVIDUAL), alpha = 0.5, color = color)) +
+  geom_quasirandom() +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ylab("Effect Size (lnRR)") +
+  xlab("") +
+  geom_hline(yintercept = 0, linetype = 2, colour = "black", alpha = 0.5) +
+  geom_hline(yintercept = log(0.5), linetype = 2, colour = "#8B0000", alpha = 0.5) +
+  geom_hline(yintercept = log(2), linetype = 2, colour = "#8B0000", alpha = 0.5) +
+  ggtitle("PPP, AI pairs where mortality differs by > factor 2") +
+  scale_color_manual(values = "#8B0000") +
+  annotate("text", x = 1.5, y = -4, label = paste0("Effect sizes < ln(0.5) = ",
+                                                   nrow(median_imputed_data [median_imputed_data$LRR < color_below, ]), sep = "")) +
+  annotate("text", x = 1.5, y = 4, label = paste0("Effect sizes > ln(2) = ",
+                                                  nrow(median_imputed_data [median_imputed_data$LRR > color_above, ]), sep = ""))
+
+factor_two_mortality_diff_plot
+
+# use cowplot to create a grid
+cairo_pdf("output/factor_two_mortality_diff_plot.pdf", width = 10, height = 6)
+factor_two_mortality_diff_plot
+dev.off()
+```
+
+How many studies out of 92 justified their study through drift.
+
+```{r}
+drift <- read.csv("input/drift_just_studies.csv")
+
+drift_only <- drift [drift$PPP_EXPOSURE_POSSIBLE == "DRIFT",]
+
+length(unique(drift_only$STUDY_ID))
+```
+
+Schmuck dataset analysis. There were no available SE/CIs here so a simple median lnRR is calculated to get a rough idea of if analysing data submitted to regulatory
+sources would change anything.
+
+```{r}
+schmuck_dataset <- read.csv("input/schmuck_1994_dataset.csv")
+
+# calculate median lnRR for each pesticide class
+# herbicide
+median(schmuck_dataset [schmuck_dataset$PESTICIDE_CLASS == "herbicide", ]$lnRR)
+
+# insecticide
+median(schmuck_dataset [schmuck_dataset$PESTICIDE_CLASS == "insecticide", ]$lnRR)
+
+# fungicide
+median(schmuck_dataset [schmuck_dataset$PESTICIDE_CLASS == "fungicide", ]$lnRR)
+```
+
+Things I could do to improve the analysis.
+
+1) Another sensitivity analysis to perform is to filter only the CIs calculated by probit, perform an inverse probit transformation to get symmetrical CIs and perform the analysis again (extracting SE, calculate vi, fit final model).
+
+2) Also try alternative imputation approach where SE, TDD linear-ish relationship is used in a way analagous to SD/mean outlined by nagakawa [nagakawa reference](https://onlinelibrary.wiley.com/doi/10.1111/ele.14144). See if the result holds with this approach. Or estimate SD by SD = SE * sqrt(SE) and then perform on this SD.
+
+3) For some of the above sensitivity analyses it would be better to add moderators instead of subsetting the data. Look at the OrchaRd vignette below for marginalised means.
+
+4) Fit a model that allows for variance to vary between moderator levels. Unsure how to code this my final model."An additional issue that is of importance with meta-regression models is the need to deal with heteroscedastic variance across levels of a moderator. Homogeneity of variance assumptions are often violated in meta-analysis. orchaRd 2.0 allows the user to fit models that explicitly estimate different residual variances reducing the probability of type I errors." [OrchaRd ref](https://daniel1noble.github.io/orchaRd/#orchard-plots-with-meta-regression-models-marginalised-and-conditional-means-with-heteroscedastic-residual-variances)
+
+5) Most importantly, include regulatory sources.
+
+Of everything I have done above there are 4 areas I am not fully happy with.
+
+i) Imputation. Is this a valid approach? I think so as gamma distributions have been used in the literature to estimate variance distributions. My attempt of using the proportion hopefully tackled the unit issue and non-randomness of the missing data.
+
+ii) Heterogeneity. I had to run these checks on a model with a simplified random structure as the package orchaRd didn't take autoregressive correlation structures. This section is there to give a rough approximation of the heterogeneity. I should be able to calculate this [manually](https://www.metafor-project.org/doku.php/tips:i2_multilevel_multivariate). I attempted this and think I did it correctly. Unfortunately, they didn'y provide a how to for marginal R^2.
+
+iii) Sampling VCV matrices. I didn't manage to combine common control and multiple measurement in vcalc even though it is definitely possible. Below I have run my main model with the autocorrelation structure and then the common control structure to highlight that it doesn't change the results much.
+
+iv) Publication bias. For the uncertainty section I had a non-significant positive slope, which resulted in my adjusted values being more significant than the actual values. I think the reason behind this is there were few studies with very small sample size and they happened to test pesticides with formulations that weren't more toxic than their AI. This resulted in this non-significant positive slope. If more studies with small sample sizes had existed on a broader range of pesticides this relationship wouldn't have existed.
